@@ -115,9 +115,13 @@
   <template id="exerciseTemplate">
     <div class="exercise-card">
       <div class="row-head exercise-title-row">
-        <input class="exercise-name" type="text" list="exerciseLibrary" placeholder="Exercise (e.g. Bench Press)" />
+        <div class="exercise-picker">
+          <input class="exercise-name" type="text" autocomplete="off" placeholder="Search exercise (e.g. Bench Press)" />
+          <div class="exercise-suggestions hidden" role="listbox" aria-label="Exercise suggestions"></div>
+        </div>
         <button type="button" class="remove remove-exercise" title="Remove exercise" aria-label="Remove exercise">×</button>
       </div>
+      <div class="previous-performance muted" aria-live="polite"></div>
       <div class="set-headings" aria-hidden="true"><span>Set</span><span>Weight</span><span>Reps</span><span>RIR</span><span></span></div>
       <div class="set-rows"></div>
       <div class="exercise-actions">
@@ -141,7 +145,10 @@
     <div class="routine-exercise-row">
       <div class="routine-row-top">
         <span class="routine-order" aria-label="Exercise order">1</span>
-        <input class="routine-exercise-name" type="text" list="exerciseLibrary" placeholder="Exercise" />
+        <div class="exercise-picker routine-picker">
+          <input class="routine-exercise-name" type="text" autocomplete="off" placeholder="Search exercise" />
+          <div class="exercise-suggestions hidden" role="listbox" aria-label="Exercise suggestions"></div>
+        </div>
         <div class="order-buttons">
           <button type="button" class="icon-btn move-up" aria-label="Move exercise up" title="Move up">↑</button>
           <button type="button" class="icon-btn move-down" aria-label="Move exercise down" title="Move down">↓</button>
@@ -155,11 +162,6 @@
     </div>
   </template>
 
-  <datalist id="exerciseLibrary">
-    <option value="Bench Press"><option value="Incline Bench Press"><option value="Dumbbell Bench Press"><option value="Shoulder Press"><option value="Lateral Raise">
-    <option value="Lat Pulldown"><option value="Cable Row"><option value="Chest Supported Row"><option value="Biceps Curl"><option value="Hammer Curl"><option value="Triceps Pushdown">
-    <option value="Back Squat"><option value="Front Squat"><option value="Romanian Deadlift"><option value="Leg Press"><option value="Leg Extension"><option value="Leg Curl"><option value="Calf Raise">
-  </datalist>
 
   <script src="app.js"></script>
 </body>

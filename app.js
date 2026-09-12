@@ -7,6 +7,15 @@ let deferredPrompt=null;
 const $=id=>document.getElementById(id);
 const today=()=>new Date().toISOString().slice(0,10);
 
+const EXERCISE_LIBRARY=[
+ 'Bench Press','Incline Bench Press','Decline Bench Press','Dumbbell Bench Press','Incline Dumbbell Bench Press','Chest Press Machine','Cable Fly','Pec Deck',
+ 'Shoulder Press','Dumbbell Shoulder Press','Arnold Press','Lateral Raise','Cable Lateral Raise','Rear Delt Fly',
+ 'Lat Pulldown','Neutral Grip Lat Pulldown','Cable Row','Seated Row Machine','Chest Supported Row','One-Arm Dumbbell Row','Straight-Arm Pulldown',
+ 'Biceps Curl','Dumbbell Curl','Hammer Curl','Preacher Curl','Cable Curl','Triceps Pushdown','Overhead Triceps Extension','Skull Crusher',
+ 'Back Squat','Front Squat','Hack Squat','Leg Press','Romanian Deadlift','Good Morning','Leg Extension','Leg Curl','Seated Leg Curl','Calf Raise','Seated Calf Raise',
+ 'Hip Abduction Machine','Hip Adduction Machine','Bulgarian Split Squat','Walking Lunge','Goblet Squat'
+];
+
 const starters=[
  {id:'starter-upper-a',name:'Upper A',exercises:[['Bench Press',3,6],['Lat Pulldown',3,8],['Shoulder Press',3,8],['Cable Row',3,10],['Biceps Curl',3,10],['Triceps Pushdown',3,10]]},
  {id:'starter-lower-a',name:'Lower A',exercises:[['Back Squat',3,6],['Romanian Deadlift',3,8],['Leg Press',3,10],['Leg Curl',3,10],['Calf Raise',4,12]]},
@@ -25,6 +34,57 @@ function e1rm(w,r){return r===1?w:w*(1+r/30)}
 function fmt(n){return Math.round(n).toLocaleString()}
 function fmtDate(s){const [y,m,d]=s.split('-').map(Number);return new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric',year:'numeric'}).format(new Date(y,m-1,d))}
 function startOfWeek(d){const x=new Date(d+'T12:00:00');const day=(x.getDay()+6)%7;x.setDate(x.getDate()-day);x.setHours(0,0,0,0);return x}
+
+function exerciseCatalog(){
+ const prior=workouts.flatMap(w=>normalizedWorkout(w).exercises.map(e=>e.name)).filter(Boolean);
+ return [...new Set([...EXERCISE_LIBRARY,...prior])].sort((a,b)=>a.localeCompare(b));
+}
+function canonicalExerciseName(value){
+ const clean=String(value||'').trim(); if(!clean)return '';
+ const exact=exerciseCatalog().find(n=>n.toLowerCase()===clean.toLowerCase());
+ return exact||clean;
+}
+function latestExercisePerformance(name){
+ const key=String(name||'').trim().toLowerCase(); if(!key)return null;
+ const ordered=[...workouts].sort((a,b)=>b.date.localeCompare(a.date));
+ for(const w of ordered){
+  const matches=normalizedWorkout(w).exercises.filter(e=>e.name.trim().toLowerCase()===key);
+  if(!matches.length)continue;
+  const sets=matches.flatMap(e=>e.sets).filter(s=>s.weight>0&&s.reps>0);
+  if(sets.length)return {date:w.date,workoutName:w.name,sets};
+ }
+ return null;
+}
+function renderPreviousPerformance(card){
+ const out=card.querySelector('.previous-performance'); if(!out)return;
+ const name=canonicalExerciseName(card.querySelector('.exercise-name')?.value||'');
+ if(!name){out.textContent='Choose an exercise to see your previous performance.';return;}
+ const last=latestExercisePerformance(name);
+ if(!last){out.innerHTML=`<strong>No previous session</strong><span>First logged session for ${escapeHtml(name)}.</span>`;return;}
+ const setText=last.sets.map(s=>`${s.weight}×${s.reps}${s.rir==null?'':` @${s.rir} RIR`}`).join(' · ');
+ const top=Math.max(...last.sets.map(s=>s.weight));
+ const best=Math.max(...last.sets.map(s=>e1rm(s.weight,s.reps)));
+ out.innerHTML=`<strong>Last: ${fmtDate(last.date)}</strong><span>${escapeHtml(setText)}</span><small>Top ${top} lb · est. 1RM ${Math.round(best)} lb</small>`;
+}
+function setupExerciseAutocomplete(input,menu,onPick){
+ const close=()=>{menu.classList.add('hidden');menu.innerHTML='';};
+ const show=()=>{
+  const q=input.value.trim().toLowerCase();
+  const choices=exerciseCatalog().filter(n=>!q||n.toLowerCase().includes(q)).slice(0,8);
+  menu.innerHTML='';
+  choices.forEach(name=>{
+   const b=document.createElement('button');b.type='button';b.className='exercise-suggestion';b.textContent=name;
+   b.addEventListener('mousedown',e=>e.preventDefault());
+   b.addEventListener('click',()=>{input.value=name;close();onPick?.(name);});menu.appendChild(b);
+  });
+  if(q&&!choices.some(n=>n.toLowerCase()===q)){
+   const custom=document.createElement('div');custom.className='custom-exercise-hint';custom.textContent=`Keep “${input.value.trim()}” as a custom exercise`;menu.appendChild(custom);
+  }
+  menu.classList.toggle('hidden',!menu.children.length);
+ };
+ input.addEventListener('focus',show);input.addEventListener('input',()=>{show();onPick?.(input.value);});
+ input.addEventListener('blur',()=>{setTimeout(close,120);const canonical=canonicalExerciseName(input.value);if(canonical)input.value=canonical;onPick?.(canonical);});
+}
 
 // Normalizes old workouts (weight/reps/sets on an exercise) into the new per-set structure.
 function normalizeExercise(ex){
@@ -55,7 +115,9 @@ function addSet(exerciseNode, values={}){
 }
 function addExercise(name='',setCount=3,targetReps='',prefillSets=null){
  const node=$('exerciseTemplate').content.firstElementChild.cloneNode(true);
- node.querySelector('.exercise-name').value=name;
+ const nameInput=node.querySelector('.exercise-name');
+ nameInput.value=canonicalExerciseName(name);
+ setupExerciseAutocomplete(nameInput,node.querySelector('.exercise-suggestions'),()=>renderPreviousPerformance(node));
  const rows=node.querySelector('.set-rows'); rows.innerHTML='';
  const sets=Array.isArray(prefillSets)&&prefillSets.length?prefillSets:Array.from({length:Math.max(1,+setCount||1)},()=>({reps:targetReps||''}));
  sets.forEach(s=>addSet(node,s));
@@ -70,6 +132,7 @@ function addExercise(name='',setCount=3,targetReps='',prefillSets=null){
  });
  node.querySelector('.remove-exercise').addEventListener('click',()=>node.remove());
  $('exerciseRows').appendChild(node);
+ renderPreviousPerformance(node);
 }
 function clearWorkout(){
  $('workoutName').value='';$('routineQuickSelect').value='';$('exerciseRows').innerHTML='';addExercise();
@@ -93,7 +156,7 @@ $('routineQuickSelect').addEventListener('change',e=>{
 
 $('saveWorkout').addEventListener('click',()=>{
  const exercises=[...document.querySelectorAll('#exerciseRows .exercise-card')].map(card=>({
-  name:card.querySelector('.exercise-name').value.trim(),
+  name:canonicalExerciseName(card.querySelector('.exercise-name').value),
   sets:[...card.querySelectorAll('.set-entry')].map(row=>({
    weight:+row.querySelector('.set-weight').value||0,
    reps:+row.querySelector('.set-reps').value||0,
@@ -143,7 +206,8 @@ function moveRoutineRow(row,direction){
 }
 function addRoutineExercise(name='',sets=3,reps=8){
  const node=$('routineExerciseTemplate').content.firstElementChild.cloneNode(true);
- node.querySelector('.routine-exercise-name').value=name;node.querySelector('.routine-sets').value=sets;node.querySelector('.routine-reps').value=reps;
+ const input=node.querySelector('.routine-exercise-name');input.value=canonicalExerciseName(name);node.querySelector('.routine-sets').value=sets;node.querySelector('.routine-reps').value=reps;
+ setupExerciseAutocomplete(input,node.querySelector('.exercise-suggestions'));
  node.querySelector('.remove').addEventListener('click',()=>{node.remove();renumberRoutineExercises();});
  node.querySelector('.move-up').addEventListener('click',()=>moveRoutineRow(node,-1));
  node.querySelector('.move-down').addEventListener('click',()=>moveRoutineRow(node,1));
@@ -156,7 +220,7 @@ function openRoutineEditor(r=null){
 }
 $('newRoutine').addEventListener('click',()=>openRoutineEditor());$('addRoutineExercise').addEventListener('click',()=>addRoutineExercise());$('closeRoutine').addEventListener('click',()=>$('routineDialog').close());
 $('routineForm').addEventListener('submit',e=>{
- e.preventDefault();const name=$('routineName').value.trim();const exercises=[...document.querySelectorAll('.routine-exercise-row')].map(row=>({name:row.querySelector('.routine-exercise-name').value.trim(),sets:+row.querySelector('.routine-sets').value||0,reps:+row.querySelector('.routine-reps').value||0})).filter(x=>x.name&&x.sets>0&&x.reps>0);
+ e.preventDefault();const name=$('routineName').value.trim();const exercises=[...document.querySelectorAll('.routine-exercise-row')].map(row=>({name:canonicalExerciseName(row.querySelector('.routine-exercise-name').value),sets:+row.querySelector('.routine-sets').value||0,reps:+row.querySelector('.routine-reps').value||0})).filter(x=>x.name&&x.sets>0&&x.reps>0);
  if(!name||!exercises.length){alert('Give the routine a name and add at least one exercise.');return;}
  const id=$('routineId').value;if(id){const idx=routines.findIndex(r=>r.id===id);if(idx>=0)routines[idx]={id,name,exercises};}else routines.push({id:uid(),name,exercises});
  saveRoutines();$('routineDialog').close();renderRoutines();

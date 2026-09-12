@@ -13,3 +13,17 @@
 .routine-row-top{display:grid;grid-template-columns:32px minmax(0,1fr) auto;gap:8px;align-items:center}.routine-order{width:28px;height:28px;display:grid;place-items:center;border-radius:50%;background:rgba(96,165,250,.14);color:#93c5fd;font-weight:800;font-size:.8rem}.order-buttons{display:flex;gap:5px}.order-buttons .remove{position:static;width:36px;height:36px}
 .history-exercises{display:grid;gap:8px;margin-top:10px}.history-exercise{display:grid;gap:3px;padding-top:8px;border-top:1px solid rgba(148,163,184,.12)}
 @media(max-width:520px){.set-headings,.set-entry{grid-template-columns:42px minmax(0,1fr) minmax(0,.72fr) minmax(0,.6fr) 34px;gap:5px}.set-entry input{padding:9px 5px}.set-headings{font-size:.65rem}.routine-row-top{grid-template-columns:28px minmax(0,1fr)}.order-buttons{grid-column:2;justify-content:flex-end}}
+
+/* v4 exercise library + previous-session reference */
+.exercise-picker{position:relative;min-width:0;flex:1}
+.exercise-picker>input{width:100%}
+.exercise-suggestions{position:absolute;z-index:30;left:0;right:0;top:calc(100% + 6px);max-height:260px;overflow:auto;background:#111827;border:1px solid #334155;border-radius:12px;padding:6px;box-shadow:0 16px 35px rgba(0,0,0,.35)}
+.exercise-suggestion{display:block;width:100%;text-align:left;background:transparent;color:#e5e7eb;border:0;border-radius:8px;padding:11px 12px;font:inherit;cursor:pointer}
+.exercise-suggestion:hover,.exercise-suggestion:focus{background:#1e293b;outline:none}
+.custom-exercise-hint{padding:10px 12px;color:#94a3b8;font-size:.82rem;border-top:1px solid #263349;margin-top:4px}
+.previous-performance{margin:10px 0 12px;padding:10px 12px;border:1px solid #29364c;background:#0f172a;border-radius:10px;display:flex;gap:4px;flex-direction:column;line-height:1.35}
+.previous-performance strong{color:#dbeafe;font-size:.86rem}
+.previous-performance span{color:#cbd5e1;font-size:.86rem;overflow-wrap:anywhere}
+.previous-performance small{color:#8fa3bf;font-size:.76rem}
+.routine-picker{flex:1}
+@media(max-width:520px){.exercise-suggestions{max-height:220px}.previous-performance{font-size:.9rem}}

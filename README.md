@@ -6,6 +6,10 @@ Lift Growth is a Progressive Web App (PWA) designed primarily for iPhone. It can
 
 ## Features
 
+- **Searchable exercise library** with standardized lift names while still allowing custom exercises.
+- **Previous-session reference** shown while logging each exercise, including prior sets, top weight, and estimated 1RM.
+
+
 - **Custom workout routines** — Create, edit, delete, and reuse your own routines.
 - **Starter templates** — Quickly add Upper A, Lower A, Push, Pull, Legs, or Full Body templates and customize them.
 - **Fast workout logging** — Start from a saved routine and record sets, reps, weight, and optional RIR.
