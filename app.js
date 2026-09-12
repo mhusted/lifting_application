@@ -20,35 +20,68 @@ function safeParse(v,fallback){try{return v?JSON.parse(v):fallback}catch{return 
 function uid(){return crypto?.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random().toString(16).slice(2)}`}
 function saveWorkouts(){localStorage.setItem(WORKOUT_KEY,JSON.stringify(workouts))}
 function saveRoutines(){localStorage.setItem(ROUTINE_KEY,JSON.stringify(routines))}
-function escapeHtml(s=''){return s.replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+function escapeHtml(s=''){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
 function e1rm(w,r){return r===1?w:w*(1+r/30)}
-function sessionVolume(w){return w.exercises.reduce((s,e)=>s+e.weight*e.reps*e.sets,0)}
 function fmt(n){return Math.round(n).toLocaleString()}
 function fmtDate(s){const [y,m,d]=s.split('-').map(Number);return new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric',year:'numeric'}).format(new Date(y,m-1,d))}
 function startOfWeek(d){const x=new Date(d+'T12:00:00');const day=(x.getDay()+6)%7;x.setDate(x.getDate()-day);x.setHours(0,0,0,0);return x}
 
+// Normalizes old workouts (weight/reps/sets on an exercise) into the new per-set structure.
+function normalizeExercise(ex){
+ if(Array.isArray(ex.sets)) return {name:ex.name,sets:ex.sets.map(s=>({weight:+s.weight||0,reps:+s.reps||0,rir:s.rir==null||s.rir===''?null:+s.rir}))};
+ const count=Math.max(1,+ex.sets||1);
+ return {name:ex.name,sets:Array.from({length:count},()=>({weight:+ex.weight||0,reps:+ex.reps||0,rir:ex.rir==null?null:+ex.rir}))};
+}
+function normalizedWorkout(w){return {...w,exercises:(w.exercises||[]).map(normalizeExercise)}}
+function exerciseVolume(ex){return normalizeExercise(ex).sets.reduce((sum,s)=>sum+s.weight*s.reps,0)}
+function sessionVolume(w){return (w.exercises||[]).reduce((sum,e)=>sum+exerciseVolume(e),0)}
+function setCountForWorkout(w){return (w.exercises||[]).reduce((sum,e)=>sum+normalizeExercise(e).sets.filter(s=>s.weight>0&&s.reps>0).length,0)}
+function bestE1ForExercise(ex){const sets=normalizeExercise(ex).sets.filter(s=>s.weight>0&&s.reps>0);return sets.length?Math.max(...sets.map(s=>e1rm(s.weight,s.reps))):0}
+
 $('date').value=today();
 
-function addExercise(name='',sets=3,reps='',weight='',rir=''){
+function renumberSets(exerciseNode){
+ [...exerciseNode.querySelectorAll('.set-entry')].forEach((row,i)=>{row.querySelector('.set-number').textContent=`Set ${i+1}`;});
+}
+function addSet(exerciseNode, values={}){
+ const node=$('setTemplate').content.firstElementChild.cloneNode(true);
+ node.querySelector('.set-weight').value=values.weight??'';
+ node.querySelector('.set-reps').value=values.reps??'';
+ node.querySelector('.set-rir').value=values.rir??'';
+ node.querySelector('.remove-set').addEventListener('click',()=>{node.remove();renumberSets(exerciseNode);});
+ exerciseNode.querySelector('.set-rows').appendChild(node);
+ renumberSets(exerciseNode);
+ return node;
+}
+function addExercise(name='',setCount=3,targetReps='',prefillSets=null){
  const node=$('exerciseTemplate').content.firstElementChild.cloneNode(true);
  node.querySelector('.exercise-name').value=name;
- node.querySelector('.sets').value=sets||3;
- node.querySelector('.reps').value=reps||'';
- node.querySelector('.weight').value=weight||'';
- node.querySelector('.rir').value=rir??'';
- node.querySelector('.remove').addEventListener('click',()=>node.remove());
+ const rows=node.querySelector('.set-rows'); rows.innerHTML='';
+ const sets=Array.isArray(prefillSets)&&prefillSets.length?prefillSets:Array.from({length:Math.max(1,+setCount||1)},()=>({reps:targetReps||''}));
+ sets.forEach(s=>addSet(node,s));
+ node.querySelector('.add-set').addEventListener('click',()=>{
+  const prior=[...node.querySelectorAll('.set-entry')].at(-1);
+  addSet(node,{reps:prior?.querySelector('.set-reps').value||targetReps||''});
+ });
+ node.querySelector('.fill-down').addEventListener('click',()=>{
+  const all=[...node.querySelectorAll('.set-entry')]; if(all.length<2)return;
+  const first={weight:all[0].querySelector('.set-weight').value,reps:all[0].querySelector('.set-reps').value,rir:all[0].querySelector('.set-rir').value};
+  all.slice(1).forEach(r=>{r.querySelector('.set-weight').value=first.weight;r.querySelector('.set-reps').value=first.reps;r.querySelector('.set-rir').value=first.rir;});
+ });
+ node.querySelector('.remove-exercise').addEventListener('click',()=>node.remove());
  $('exerciseRows').appendChild(node);
 }
 function clearWorkout(){
  $('workoutName').value='';$('routineQuickSelect').value='';$('exerciseRows').innerHTML='';addExercise();
 }
-$('addExercise').addEventListener('click',()=>addExercise());
+$('addExercise').addEventListener('click',()=>addExercise('',3,''));
 $('clearWorkout').addEventListener('click',clearWorkout);
 
 function loadRoutineIntoLog(routine){
  $('exerciseRows').innerHTML='';
  $('workoutName').value=routine.name;
  routine.exercises.forEach(e=>addExercise(e.name,e.sets,e.reps));
+ $('routineQuickSelect').value=routine.id;
  switchTab('log');
  window.scrollTo({top:0,behavior:'smooth'});
 }
@@ -59,14 +92,15 @@ $('routineQuickSelect').addEventListener('change',e=>{
 });
 
 $('saveWorkout').addEventListener('click',()=>{
- const exercises=[...document.querySelectorAll('#exerciseRows .exercise-row')].map(r=>({
-  name:r.querySelector('.exercise-name').value.trim(),
-  weight:+r.querySelector('.weight').value||0,
-  reps:+r.querySelector('.reps').value||0,
-  sets:+r.querySelector('.sets').value||0,
-  rir:r.querySelector('.rir').value===''?null:+r.querySelector('.rir').value
- })).filter(x=>x.name&&x.weight>0&&x.reps>0&&x.sets>0);
- if(!exercises.length){alert('Add at least one complete exercise with weight, reps, and sets.');return;}
+ const exercises=[...document.querySelectorAll('#exerciseRows .exercise-card')].map(card=>({
+  name:card.querySelector('.exercise-name').value.trim(),
+  sets:[...card.querySelectorAll('.set-entry')].map(row=>({
+   weight:+row.querySelector('.set-weight').value||0,
+   reps:+row.querySelector('.set-reps').value||0,
+   rir:row.querySelector('.set-rir').value===''?null:+row.querySelector('.set-rir').value
+  })).filter(s=>s.weight>0&&s.reps>0)
+ })).filter(x=>x.name&&x.sets.length);
+ if(!exercises.length){alert('Add at least one exercise with a completed set (weight and reps).');return;}
  workouts.push({id:uid(),date:$('date').value||today(),name:$('workoutName').value.trim()||'Workout',exercises});
  workouts.sort((a,b)=>a.date.localeCompare(b.date));saveWorkouts();clearWorkout();$('date').value=today();renderAll();alert('Workout saved.');
 });
@@ -74,7 +108,7 @@ $('saveWorkout').addEventListener('click',()=>{
 function routineCard(r,isStarter=false){
  const ex=r.exercises.map(e=>typeof e[0]==='string'?{name:e[0],sets:e[1],reps:e[2]}:e);
  const el=document.createElement('article');el.className='routine-card';
- el.innerHTML=`<div class="routine-card-head"><div><strong>${escapeHtml(r.name)}</strong><div class="muted">${ex.length} exercises</div></div><span class="routine-badge">${isStarter?'Template':'Saved'}</span></div><div class="routine-preview">${ex.slice(0,4).map(e=>`<span>${escapeHtml(e.name)} · ${e.sets}×${e.reps}</span>`).join('')}${ex.length>4?`<span>+${ex.length-4} more</span>`:''}</div><div class="routine-buttons"></div>`;
+ el.innerHTML=`<div class="routine-card-head"><div><strong>${escapeHtml(r.name)}</strong><div class="muted">${ex.length} exercises</div></div><span class="routine-badge">${isStarter?'Template':'Saved'}</span></div><div class="routine-preview">${ex.slice(0,5).map(e=>`<span>${escapeHtml(e.name)} · ${e.sets}×${e.reps}</span>`).join('')}${ex.length>5?`<span>+${ex.length-5} more</span>`:''}</div><div class="routine-buttons"></div>`;
  const buttons=el.querySelector('.routine-buttons');
  if(isStarter){
   const add=document.createElement('button');add.className='primary small';add.textContent='Add to My Routines';add.addEventListener('click',()=>{
@@ -98,10 +132,22 @@ function renderRoutines(){
  const select=$('routineQuickSelect'),cur=select.value;select.innerHTML='<option value="">Blank workout</option>'+routines.map(r=>`<option value="${r.id}">${escapeHtml(r.name)}</option>`).join('');if(routines.some(r=>r.id===cur))select.value=cur;
 }
 
+function renumberRoutineExercises(){
+ [...document.querySelectorAll('.routine-exercise-row')].forEach((row,i)=>{row.querySelector('.routine-order').textContent=String(i+1);});
+}
+function moveRoutineRow(row,direction){
+ const parent=row.parentElement;
+ if(direction<0&&row.previousElementSibling)parent.insertBefore(row,row.previousElementSibling);
+ if(direction>0&&row.nextElementSibling)parent.insertBefore(row.nextElementSibling,row);
+ renumberRoutineExercises();
+}
 function addRoutineExercise(name='',sets=3,reps=8){
  const node=$('routineExerciseTemplate').content.firstElementChild.cloneNode(true);
  node.querySelector('.routine-exercise-name').value=name;node.querySelector('.routine-sets').value=sets;node.querySelector('.routine-reps').value=reps;
- node.querySelector('.remove').addEventListener('click',()=>node.remove());$('routineExerciseRows').appendChild(node);
+ node.querySelector('.remove').addEventListener('click',()=>{node.remove();renumberRoutineExercises();});
+ node.querySelector('.move-up').addEventListener('click',()=>moveRoutineRow(node,-1));
+ node.querySelector('.move-down').addEventListener('click',()=>moveRoutineRow(node,1));
+ $('routineExerciseRows').appendChild(node);renumberRoutineExercises();
 }
 function openRoutineEditor(r=null){
  $('routineId').value=r?.id||'';$('routineName').value=r?.name||'';$('routineDialogTitle').textContent=r?'Edit routine':'New routine';$('routineExerciseRows').innerHTML='';
@@ -119,15 +165,18 @@ $('routineForm').addEventListener('submit',e=>{
 function renderDashboard(){
  const now=new Date(),cur=startOfWeek(now.toISOString().slice(0,10)),prev=new Date(cur),next=new Date(cur);prev.setDate(prev.getDate()-7);next.setDate(next.getDate()+7);
  const inRange=(w,a,b)=>{const d=new Date(w.date+'T12:00:00');return d>=a&&d<b};const cw=workouts.filter(w=>inRange(w,cur,next)),pw=workouts.filter(w=>inRange(w,prev,cur));
- const cv=cw.reduce((s,w)=>s+sessionVolume(w),0),pv=pw.reduce((s,w)=>s+sessionVolume(w),0);$('weekVolume').textContent=`${fmt(cv)} lb`;$('weekChange').textContent=pv?`${cv>=pv?'▲':'▼'} ${Math.abs((cv-pv)/pv*100).toFixed(1)}% vs last week`:'No prior week yet';$('weekChange').className='muted '+(pv?(cv>=pv?'good':'bad'):'');$('workoutCount').textContent=cw.length;$('setCount').textContent=cw.reduce((s,w)=>s+w.exercises.reduce((a,e)=>a+e.sets,0),0);
- let prs=0;const best={};[...workouts].sort((a,b)=>a.date.localeCompare(b.date)).forEach(w=>w.exercises.forEach(e=>{const key=e.name.toLowerCase(),v=e1rm(e.weight,e.reps);if(best[key]==null||v>best[key]){if(best[key]!=null&&inRange(w,cur,next))prs++;best[key]=v}}));$('prCount').textContent=prs;
+ const cv=cw.reduce((s,w)=>s+sessionVolume(w),0),pv=pw.reduce((s,w)=>s+sessionVolume(w),0);$('weekVolume').textContent=`${fmt(cv)} lb`;$('weekChange').textContent=pv?`${cv>=pv?'▲':'▼'} ${Math.abs((cv-pv)/pv*100).toFixed(1)}% vs last week`:'No prior week yet';$('weekChange').className='muted '+(pv?(cv>=pv?'good':'bad'):'');$('workoutCount').textContent=cw.length;$('setCount').textContent=cw.reduce((s,w)=>s+setCountForWorkout(w),0);
+ let prs=0;const best={};[...workouts].sort((a,b)=>a.date.localeCompare(b.date)).forEach(w=>normalizedWorkout(w).exercises.forEach(ex=>{const key=ex.name.toLowerCase(),v=bestE1ForExercise(ex);if(v<=0)return;if(best[key]==null||v>best[key]){if(best[key]!=null&&inRange(w,cur,next))prs++;best[key]=v}}));$('prCount').textContent=prs;
 }
 
+function setSummary(ex){
+ const n=normalizeExercise(ex);return n.sets.map(s=>`${s.weight}×${s.reps}${s.rir==null?'':` @${s.rir} RIR`}`).join(' · ');
+}
 function renderHistory(){
- const el=$('historyList');el.innerHTML='';[...workouts].sort((a,b)=>b.date.localeCompare(a.date)).forEach(w=>{const d=document.createElement('div');d.className='history-item';d.innerHTML=`<div class="history-top"><div><strong>${escapeHtml(w.name)}</strong><div class="muted">${fmtDate(w.date)} · ${fmt(sessionVolume(w))} lb volume</div></div><button class="delete-workout" data-id="${w.id}">Delete</button></div><div>${w.exercises.map(e=>`<span class="exercise-pill">${escapeHtml(e.name)}: ${e.weight} × ${e.reps} × ${e.sets}</span>`).join('')}</div>`;el.appendChild(d)});if(!workouts.length)el.innerHTML='<div class="empty-state"><strong>No workouts yet.</strong><span>Log your first workout to start tracking progress.</span></div>';
+ const el=$('historyList');el.innerHTML='';[...workouts].sort((a,b)=>b.date.localeCompare(a.date)).forEach(w=>{const nw=normalizedWorkout(w);const d=document.createElement('div');d.className='history-item';d.innerHTML=`<div class="history-top"><div><strong>${escapeHtml(w.name)}</strong><div class="muted">${fmtDate(w.date)} · ${setCountForWorkout(w)} sets · ${fmt(sessionVolume(w))} lb volume</div></div><button class="delete-workout" data-id="${w.id}">Delete</button></div><div class="history-exercises">${nw.exercises.map(e=>`<div class="history-exercise"><strong>${escapeHtml(e.name)}</strong><span class="muted">${escapeHtml(setSummary(e))}</span></div>`).join('')}</div>`;el.appendChild(d)});if(!workouts.length)el.innerHTML='<div class="empty-state"><strong>No workouts yet.</strong><span>Log your first workout to start tracking progress.</span></div>';
  el.querySelectorAll('.delete-workout').forEach(b=>b.addEventListener('click',()=>{if(confirm('Delete this workout?')){workouts=workouts.filter(w=>w.id!==b.dataset.id);saveWorkouts();renderAll();}}));
 }
-function allExerciseNames(){return [...new Set(workouts.flatMap(w=>w.exercises.map(e=>e.name)))].sort((a,b)=>a.localeCompare(b))}
+function allExerciseNames(){return [...new Set(workouts.flatMap(w=>normalizedWorkout(w).exercises.map(e=>e.name)))].sort((a,b)=>a.localeCompare(b))}
 function renderExerciseSelect(){const s=$('exerciseSelect'),cur=s.value,names=allExerciseNames();s.innerHTML=names.map(n=>`<option>${escapeHtml(n)}</option>`).join('');if(names.includes(cur))s.value=cur;s.onchange=renderProgress;renderProgress()}
 
 function drawChart(points,metric){
@@ -139,13 +188,22 @@ function drawChart(points,metric){
  coords.forEach((p,i)=>{ctx.fillStyle='#f8fafc';ctx.beginPath();ctx.arc(p.x,p.y,5,0,Math.PI*2);ctx.fill();if(i===0||i===coords.length-1){ctx.fillStyle='#9ca3af';ctx.textAlign=i===0?'left':'right';ctx.fillText(fmtDate(p.date).replace(/, \d{4}/,''),p.x,h-22)}});
  ctx.fillStyle='#f8fafc';ctx.textAlign='right';const last=coords.at(-1);ctx.fillText(metric==='volume'?`${fmt(last.v)} lb`:`${Math.round(last.v)} lb`,Math.min(last.x,w-pad.r),Math.max(18,last.y-12));
 }
-function exerciseRows(name){const rows=[];workouts.forEach(w=>w.exercises.filter(e=>e.name===name).forEach(e=>rows.push({date:w.date,...e,vol:e.weight*e.reps*e.sets,e1:e1rm(e.weight,e.reps)})));return rows.sort((a,b)=>a.date.localeCompare(b.date))}
+function exerciseRows(name){
+ const rows=[];
+ workouts.forEach(w=>{
+  const matching=normalizedWorkout(w).exercises.filter(e=>e.name===name);
+  if(!matching.length)return;
+  const sets=matching.flatMap(e=>e.sets).filter(s=>s.weight>0&&s.reps>0);if(!sets.length)return;
+  rows.push({date:w.date,sets,weight:Math.max(...sets.map(s=>s.weight)),vol:sets.reduce((a,s)=>a+s.weight*s.reps,0),e1:Math.max(...sets.map(s=>e1rm(s.weight,s.reps)))});
+ });
+ return rows.sort((a,b)=>a.date.localeCompare(b.date));
+}
 function renderProgress(){
  const name=$('exerciseSelect').value;if(!name){$('bestWeight').textContent=$('bestE1RM').textContent=$('bestVolume').textContent='—';$('liftChange').textContent='Log a workout to begin tracking.';drawChart([],currentMetric);$('progressTable').innerHTML='<div class="muted">Your exercise history will appear here.</div>';return;}
  const rows=exerciseRows(name);$('bestWeight').textContent=Math.max(...rows.map(r=>r.weight))+' lb';$('bestE1RM').textContent=Math.round(Math.max(...rows.map(r=>r.e1)))+' lb';$('bestVolume').textContent=fmt(Math.max(...rows.map(r=>r.vol)))+' lb';const key=currentMetric==='e1rm'?'e1':currentMetric==='weight'?'weight':'vol';drawChart(rows.map(r=>({v:r[key],date:r.date})),currentMetric);
  if(rows.length>=2){const first=rows[0][key],last=rows.at(-1)[key],pct=first?((last-first)/first*100):0;const label=currentMetric==='e1rm'?'estimated 1RM':currentMetric==='weight'?'top weight':'session volume';$('liftChange').innerHTML=`<strong class="${pct>=0?'good':'bad'}">${pct>=0?'▲':'▼'} ${Math.abs(pct).toFixed(1)}%</strong> ${label} since your first logged session`;}
  else $('liftChange').textContent='Log one more session to calculate your trend.';
- $('progressTable').innerHTML=[...rows].reverse().map(r=>`<div class="progress-item"><strong>${fmtDate(r.date)}</strong><div class="muted">${r.weight} lb × ${r.reps} × ${r.sets} · est. 1RM ${Math.round(r.e1)} lb · volume ${fmt(r.vol)} lb${r.rir==null?'':` · RIR ${r.rir}`}</div></div>`).join('');
+ $('progressTable').innerHTML=[...rows].reverse().map(r=>`<div class="progress-item"><strong>${fmtDate(r.date)}</strong><div class="muted">${r.sets.map(s=>`${s.weight}×${s.reps}${s.rir==null?'':` (RIR ${s.rir})`}`).join(' · ')}</div><div class="muted">Top weight ${r.weight} lb · est. 1RM ${Math.round(r.e1)} lb · volume ${fmt(r.vol)} lb</div></div>`).join('');
 }
 
 document.querySelectorAll('.metric').forEach(b=>b.addEventListener('click',()=>{currentMetric=b.dataset.metric;document.querySelectorAll('.metric').forEach(x=>x.classList.toggle('active',x===b));renderProgress();}));

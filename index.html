@@ -45,7 +45,7 @@
     <section id="log" class="panel active">
       <div class="card">
         <div class="section-head">
-          <div><h2>Log workout</h2><p class="muted">Start blank or load one of your routines.</p></div>
+          <div><h2>Log workout</h2><p class="muted">Track each set separately for more accurate progress data.</p></div>
           <button id="clearWorkout" class="text-btn">Clear</button>
         </div>
         <label>Routine
@@ -113,28 +113,43 @@
   </dialog>
 
   <template id="exerciseTemplate">
-    <div class="exercise-row">
-      <div class="row-head">
+    <div class="exercise-card">
+      <div class="row-head exercise-title-row">
         <input class="exercise-name" type="text" list="exerciseLibrary" placeholder="Exercise (e.g. Bench Press)" />
-        <button type="button" class="remove" title="Remove" aria-label="Remove exercise">×</button>
+        <button type="button" class="remove remove-exercise" title="Remove exercise" aria-label="Remove exercise">×</button>
       </div>
-      <div class="set-grid">
-        <label>Weight<input class="weight" type="number" inputmode="decimal" min="0" step="2.5" placeholder="135" /></label>
-        <label>Reps<input class="reps" type="number" inputmode="numeric" min="1" step="1" placeholder="8" /></label>
-        <label>Sets<input class="sets" type="number" inputmode="numeric" min="1" step="1" value="3" /></label>
-        <label>RIR<input class="rir" type="number" inputmode="numeric" min="0" max="10" step="1" placeholder="2" /></label>
+      <div class="set-headings" aria-hidden="true"><span>Set</span><span>Weight</span><span>Reps</span><span>RIR</span><span></span></div>
+      <div class="set-rows"></div>
+      <div class="exercise-actions">
+        <button type="button" class="secondary small add-set">+ Add set</button>
+        <button type="button" class="text-btn small fill-down">Copy Set 1 down</button>
       </div>
+    </div>
+  </template>
+
+  <template id="setTemplate">
+    <div class="set-entry">
+      <span class="set-number">Set 1</span>
+      <input class="set-weight" aria-label="Weight" type="number" inputmode="decimal" min="0" step="2.5" placeholder="135" />
+      <input class="set-reps" aria-label="Reps" type="number" inputmode="numeric" min="1" step="1" placeholder="8" />
+      <input class="set-rir" aria-label="RIR" type="number" inputmode="numeric" min="0" max="10" step="1" placeholder="2" />
+      <button type="button" class="remove-set" title="Remove set" aria-label="Remove set">×</button>
     </div>
   </template>
 
   <template id="routineExerciseTemplate">
     <div class="routine-exercise-row">
-      <div class="row-head">
+      <div class="routine-row-top">
+        <span class="routine-order" aria-label="Exercise order">1</span>
         <input class="routine-exercise-name" type="text" list="exerciseLibrary" placeholder="Exercise" />
-        <button type="button" class="remove" title="Remove" aria-label="Remove exercise">×</button>
+        <div class="order-buttons">
+          <button type="button" class="icon-btn move-up" aria-label="Move exercise up" title="Move up">↑</button>
+          <button type="button" class="icon-btn move-down" aria-label="Move exercise down" title="Move down">↓</button>
+          <button type="button" class="remove" title="Remove exercise" aria-label="Remove exercise">×</button>
+        </div>
       </div>
       <div class="routine-target-grid">
-        <label>Sets<input class="routine-sets" type="number" min="1" max="20" value="3" /></label>
+        <label>Target sets<input class="routine-sets" type="number" min="1" max="20" value="3" /></label>
         <label>Target reps<input class="routine-reps" type="number" min="1" max="100" value="8" /></label>
       </div>
     </div>
