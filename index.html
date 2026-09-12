@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Lift Growth" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+  <title>Lift Growth</title>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="eyebrow">WEEKLY STRENGTH TRACKER</div>
+      <h1>Lift Growth</h1>
+    </div>
+    <button id="installBtn" class="ghost hidden">Install</button>
+  </header>
+
+  <main>
+    <section class="card hero">
+      <div>
+        <div class="muted">Training volume this week</div>
+        <div class="big" id="weekVolume">0 lb</div>
+        <div class="muted" id="weekChange">No prior week yet</div>
+      </div>
+      <div class="hero-grid">
+        <div><span id="workoutCount">0</span><small>workouts</small></div>
+        <div><span id="setCount">0</span><small>sets</small></div>
+        <div><span id="prCount">0</span><small>new PRs</small></div>
+      </div>
+    </section>
+
+    <nav class="tabs" aria-label="Main navigation">
+      <button class="tab active" data-tab="log">Log</button>
+      <button class="tab" data-tab="routines">Routines</button>
+      <button class="tab" data-tab="progress">Progress</button>
+      <button class="tab" data-tab="history">History</button>
+    </nav>
+
+    <section id="log" class="panel active">
+      <div class="card">
+        <div class="section-head">
+          <div><h2>Log workout</h2><p class="muted">Start blank or load one of your routines.</p></div>
+          <button id="clearWorkout" class="text-btn">Clear</button>
+        </div>
+        <label>Routine
+          <select id="routineQuickSelect"><option value="">Blank workout</option></select>
+        </label>
+        <div class="two-col">
+          <label>Date<input type="date" id="date" /></label>
+          <label>Workout name<input type="text" id="workoutName" placeholder="Upper A" /></label>
+        </div>
+        <div id="exerciseRows"></div>
+        <button id="addExercise" class="secondary">+ Add exercise</button>
+        <button id="saveWorkout" class="primary">Save workout</button>
+      </div>
+    </section>
+
+    <section id="routines" class="panel">
+      <div class="card">
+        <div class="section-head"><div><h2>My routines</h2><p class="muted">Reusable workouts you can start with one tap.</p></div><button id="newRoutine" class="secondary compact">+ New</button></div>
+        <div id="routineList" class="routine-grid"></div>
+      </div>
+      <div class="card">
+        <h2>Starter templates</h2>
+        <p class="muted">Add any of these to My Routines, then customize them.</p>
+        <div id="starterList" class="routine-grid"></div>
+      </div>
+    </section>
+
+    <section id="progress" class="panel">
+      <div class="card">
+        <h2>Lift progress</h2>
+        <label>Exercise<select id="exerciseSelect"></select></label>
+        <div class="metric-tabs" role="group" aria-label="Chart metric">
+          <button class="metric active" data-metric="e1rm">Estimated 1RM</button>
+          <button class="metric" data-metric="weight">Top weight</button>
+          <button class="metric" data-metric="volume">Volume</button>
+        </div>
+        <div class="stats-grid">
+          <div><strong id="bestWeight">—</strong><small>Best weight</small></div>
+          <div><strong id="bestE1RM">—</strong><small>Best est. 1RM</small></div>
+          <div><strong id="bestVolume">—</strong><small>Best session volume</small></div>
+        </div>
+        <div id="liftChange" class="trend-callout muted">Log at least two sessions to see progress.</div>
+        <div class="chart-wrap"><canvas id="chart" width="720" height="380"></canvas></div>
+        <div id="progressTable" class="stack"></div>
+      </div>
+    </section>
+
+    <section id="history" class="panel">
+      <div class="card">
+        <h2>Workout history</h2>
+        <div id="historyList" class="stack"></div>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="routineDialog">
+    <form id="routineForm" method="dialog" class="dialog-card">
+      <div class="section-head"><div><div class="eyebrow">ROUTINE BUILDER</div><h2 id="routineDialogTitle">New routine</h2></div><button type="button" id="closeRoutine" class="text-btn">Cancel</button></div>
+      <input type="hidden" id="routineId" />
+      <label>Routine name<input id="routineName" type="text" placeholder="Upper A" required /></label>
+      <div id="routineExerciseRows"></div>
+      <button type="button" id="addRoutineExercise" class="secondary">+ Add exercise</button>
+      <button type="submit" class="primary">Save routine</button>
+    </form>
+  </dialog>
+
+  <template id="exerciseTemplate">
+    <div class="exercise-row">
+      <div class="row-head">
+        <input class="exercise-name" type="text" list="exerciseLibrary" placeholder="Exercise (e.g. Bench Press)" />
+        <button type="button" class="remove" title="Remove" aria-label="Remove exercise">×</button>
+      </div>
+      <div class="set-grid">
+        <label>Weight<input class="weight" type="number" inputmode="decimal" min="0" step="2.5" placeholder="135" /></label>
+        <label>Reps<input class="reps" type="number" inputmode="numeric" min="1" step="1" placeholder="8" /></label>
+        <label>Sets<input class="sets" type="number" inputmode="numeric" min="1" step="1" value="3" /></label>
+        <label>RIR<input class="rir" type="number" inputmode="numeric" min="0" max="10" step="1" placeholder="2" /></label>
+      </div>
+    </div>
+  </template>
+
+  <template id="routineExerciseTemplate">
+    <div class="routine-exercise-row">
+      <div class="row-head">
+        <input class="routine-exercise-name" type="text" list="exerciseLibrary" placeholder="Exercise" />
+        <button type="button" class="remove" title="Remove" aria-label="Remove exercise">×</button>
+      </div>
+      <div class="routine-target-grid">
+        <label>Sets<input class="routine-sets" type="number" min="1" max="20" value="3" /></label>
+        <label>Target reps<input class="routine-reps" type="number" min="1" max="100" value="8" /></label>
+      </div>
+    </div>
+  </template>
+
+  <datalist id="exerciseLibrary">
+    <option value="Bench Press"><option value="Incline Bench Press"><option value="Dumbbell Bench Press"><option value="Shoulder Press"><option value="Lateral Raise">
+    <option value="Lat Pulldown"><option value="Cable Row"><option value="Chest Supported Row"><option value="Biceps Curl"><option value="Hammer Curl"><option value="Triceps Pushdown">
+    <option value="Back Squat"><option value="Front Squat"><option value="Romanian Deadlift"><option value="Leg Press"><option value="Leg Extension"><option value="Leg Curl"><option value="Calf Raise">
+  </datalist>
+
+  <script src="app.js"></script>
+</body>
+</html>
