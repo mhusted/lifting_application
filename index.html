@@ -79,29 +79,20 @@
         <label>Exercise<select id="exerciseSelect"></select></label>
         <div class="progress-controls">
           <div>
-            <span class="control-label">Metric</span>
-            <div class="metric-tabs" role="group" aria-label="Chart metric">
-              <button class="metric active" data-metric="e1rm">Estimated 1RM</button>
-              <button class="metric" data-metric="weight">Top weight</button>
-              <button class="metric" data-metric="volume">Volume</button>
-            </div>
-          </div>
-          <div>
-            <span class="control-label">Group by</span>
-            <div class="progress-toggle-grid four" role="group" aria-label="Time grouping">
-              <button class="grouping active" data-group="session">Session</button>
-              <button class="grouping" data-group="week">Week</button>
-              <button class="grouping" data-group="month">Month</button>
-              <button class="grouping" data-group="year">Year</button>
+            <span class="control-label">Compare by</span>
+            <div class="progress-toggle-grid two" role="group" aria-label="Time grouping">
+              <button class="grouping active" data-group="week">Weekly</button>
+              <button class="grouping" data-group="month">Monthly</button>
             </div>
           </div>
           <div>
             <span class="control-label">Time range</span>
-            <div class="progress-toggle-grid four" role="group" aria-label="Time range">
+            <div class="progress-toggle-grid five" role="group" aria-label="Time range">
               <button class="range" data-range="4w">4W</button>
-              <button class="range" data-range="3m">3M</button>
+              <button class="range active" data-range="3m">3M</button>
+              <button class="range" data-range="6m">6M</button>
               <button class="range" data-range="1y">1Y</button>
-              <button class="range active" data-range="all">All</button>
+              <button class="range" data-range="all">All</button>
             </div>
           </div>
           <div>
@@ -117,9 +108,19 @@
           <div><strong id="bestE1RM">—</strong><small>Best est. 1RM</small></div>
           <div><strong id="bestVolume">—</strong><small>Best session volume</small></div>
         </div>
-        <div id="liftChange" class="trend-callout muted">Log at least two sessions to see progress.</div>
-        <div id="progressViewSummary" class="progress-view-summary muted">Session view · all time</div>
-        <div class="chart-wrap"><canvas id="chart" width="720" height="380"></canvas></div>
+        <div class="trend-grid">
+          <div id="strengthChange" class="trend-callout muted">Log at least two periods to see strength change.</div>
+          <div id="volumeChange" class="trend-callout muted">Log at least two periods to see volume change.</div>
+        </div>
+        <div id="progressViewSummary" class="progress-view-summary muted">Weekly view · last 3 months</div>
+        <div class="chart-section">
+          <div class="chart-heading"><strong>Strength / PR trend</strong><span class="muted">Best estimated 1RM in each period</span></div>
+          <div class="chart-wrap"><canvas id="strengthChart" width="720" height="380"></canvas></div>
+        </div>
+        <div class="chart-section">
+          <div class="chart-heading"><strong>Training volume</strong><span class="muted">Total volume in each period</span></div>
+          <div class="chart-wrap"><canvas id="volumeChart" width="720" height="380"></canvas></div>
+        </div>
         <div id="progressTable" class="stack"></div>
       </div>
     </section>

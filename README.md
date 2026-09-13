@@ -147,3 +147,8 @@ Lift Growth can now analyze each exercise at several time scales:
 - **Year** — a high-level annual view for long-term progress.
 
 The Progress screen also includes **4-week, 3-month, 1-year, and all-time** ranges and can display either a **trend line** or **bar chart**.
+
+
+## Progress focus in v8
+
+The Progress screen now defaults to a **weekly** comparison over the **last 3 months**, with a one-tap switch to **monthly** grouping as more history accumulates. It shows two charts together: **Strength / PR trend** (best estimated 1RM per period) and **Training volume** (total volume per period), plus percent change for each.

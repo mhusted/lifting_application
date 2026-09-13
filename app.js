@@ -2,9 +2,8 @@ const WORKOUT_KEY='liftGrowthWorkoutsV1';
 const ROUTINE_KEY='liftGrowthRoutinesV2';
 let workouts=safeParse(localStorage.getItem(WORKOUT_KEY),[]);
 let routines=safeParse(localStorage.getItem(ROUTINE_KEY),[]);
-let currentMetric='e1rm';
-let currentGrouping='session';
-let currentRange='all';
+let currentGrouping='week';
+let currentRange='3m';
 let currentViz='line';
 let deferredPrompt=null;
 const $=id=>document.getElementById(id);
@@ -300,8 +299,8 @@ function renderExerciseSelect(){const s=$('exerciseSelect'),cur=s.value,names=al
 
 function chartValueLabel(v,metric){return metric==='volume'?`${fmt(v)} lb`:`${Math.round(v)} lb`}
 function shortPointLabel(p){return p.label||fmtDate(p.date).replace(/, \d{4}/,'')}
-function drawChart(points,metric,viz='line'){
- const c=$('chart'),ctx=c.getContext('2d');const cssW=Math.max(280,c.parentElement.clientWidth-2);const ratio=Math.min(window.devicePixelRatio||1,2);c.width=cssW*ratio;c.height=360*ratio;c.style.width=cssW+'px';c.style.height='360px';ctx.scale(ratio,ratio);const w=cssW,h=360,pad={l:58,r:20,t:30,b:62};ctx.clearRect(0,0,w,h);ctx.font='13px -apple-system,BlinkMacSystemFont,sans-serif';ctx.fillStyle='#9ca3af';
+function drawChart(points,metric,viz='line',canvasId='strengthChart'){
+ const c=$(canvasId),ctx=c.getContext('2d');const cssW=Math.max(280,c.parentElement.clientWidth-2);const ratio=Math.min(window.devicePixelRatio||1,2);c.width=cssW*ratio;c.height=360*ratio;c.style.width=cssW+'px';c.style.height='360px';ctx.scale(ratio,ratio);const w=cssW,h=360,pad={l:58,r:20,t:30,b:62};ctx.clearRect(0,0,w,h);ctx.font='13px -apple-system,BlinkMacSystemFont,sans-serif';ctx.fillStyle='#9ca3af';
  if(!points.length){ctx.fillText('No data in this time range yet.',22,55);return;}
  const vals=points.map(p=>p.v),rawMin=Math.min(...vals),rawMax=Math.max(...vals),spread=Math.max(rawMax-rawMin,rawMax*.08,1),min=Math.max(0,rawMin-spread*.25),max=rawMax+spread*.25;
  ctx.strokeStyle='#273449';ctx.lineWidth=1;for(let i=0;i<4;i++){const y=pad.t+i*(h-pad.t-pad.b)/3;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(w-pad.r,y);ctx.stroke();const val=max-(max-min)*i/3;ctx.fillStyle='#9ca3af';ctx.textAlign='right';ctx.fillText(metric==='volume'?fmt(val):Math.round(val),pad.l-8,y+4)}
@@ -315,7 +314,7 @@ function drawChart(points,metric,viz='line'){
  ctx.fillStyle='#f8fafc';ctx.textAlign='right';const last=points.at(-1);ctx.fillText(chartValueLabel(last.v,metric),w-pad.r,20);
 }
 function parseLocalDate(s){const [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d,12,0,0)}
-function filterRowsByRange(rows,range){if(range==='all'||!rows.length)return rows;const latest=parseLocalDate(rows.at(-1).date);const start=new Date(latest);if(range==='4w')start.setDate(start.getDate()-28);if(range==='3m')start.setMonth(start.getMonth()-3);if(range==='1y')start.setFullYear(start.getFullYear()-1);return rows.filter(r=>parseLocalDate(r.date)>=start)}
+function filterRowsByRange(rows,range){if(range==='all'||!rows.length)return rows;const latest=parseLocalDate(rows.at(-1).date);const start=new Date(latest);if(range==='4w')start.setDate(start.getDate()-28);if(range==='3m')start.setMonth(start.getMonth()-3);if(range==='6m')start.setMonth(start.getMonth()-6);if(range==='1y')start.setFullYear(start.getFullYear()-1);return rows.filter(r=>parseLocalDate(r.date)>=start)}
 function periodInfo(date,group){const d=parseLocalDate(date);if(group==='session')return {key:date,label:fmtDate(date).replace(/, \d{4}/,'')};if(group==='week'){const monday=new Date(d);monday.setDate(d.getDate()-((d.getDay()+6)%7));const y=monday.getFullYear(),m=String(monday.getMonth()+1).padStart(2,'0'),day=String(monday.getDate()).padStart(2,'0');return {key:`${y}-${m}-${day}`,label:`Wk ${new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric'}).format(monday)}`}}if(group==='month')return {key:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`,label:new Intl.DateTimeFormat(undefined,{month:'short',year:'2-digit'}).format(d)};return {key:String(d.getFullYear()),label:String(d.getFullYear())}}
 function aggregateRows(rows,metric,group){const key=metric==='e1rm'?'e1':metric==='weight'?'weight':'vol';if(group==='session')return rows.map(r=>({v:r[key],date:r.date,label:fmtDate(r.date).replace(/, \d{4}/,''),count:1,rows:[r]}));const buckets=new Map();rows.forEach(r=>{const p=periodInfo(r.date,group);if(!buckets.has(p.key))buckets.set(p.key,{...p,rows:[]});buckets.get(p.key).rows.push(r)});return [...buckets.values()].sort((a,b)=>a.key.localeCompare(b.key)).map(b=>({date:b.rows[0].date,label:b.label,count:b.rows.length,rows:b.rows,v:metric==='volume'?b.rows.reduce((sum,r)=>sum+r.vol,0):Math.max(...b.rows.map(r=>r[key]))}))}
 function exerciseRows(name){
@@ -328,18 +327,50 @@ function exerciseRows(name){
  });
  return rows.sort((a,b)=>a.date.localeCompare(b.date));
 }
+function pctChange(points){
+ if(points.length<2||!points[0].v)return null;
+ return (points.at(-1).v-points[0].v)/points[0].v*100;
+}
+function changeHtml(pct,label){
+ if(pct==null)return `Log at least two periods to see ${label} change.`;
+ return `<strong class="${pct>=0?'good':'bad'}">${pct>=0?'▲':'▼'} ${Math.abs(pct).toFixed(1)}%</strong> ${label} over the selected period`;
+}
+function rangeLabel(range){return range==='all'?'all time':range==='4w'?'last 4 weeks':range==='3m'?'last 3 months':range==='6m'?'last 6 months':'last year'}
 function renderProgress(){
- const name=$('exerciseSelect').value;if(!name){$('bestWeight').textContent=$('bestE1RM').textContent=$('bestVolume').textContent='—';$('liftChange').textContent='Log a workout to begin tracking.';drawChart([],currentMetric,currentViz);$('progressTable').innerHTML='<div class="muted">Your exercise history will appear here.</div>';return;}
- const allRows=exerciseRows(name),rows=filterRowsByRange(allRows,currentRange);if(!rows.length){$('bestWeight').textContent=$('bestE1RM').textContent=$('bestVolume').textContent='—';$('liftChange').textContent='No sessions for this exercise in the selected range.';drawChart([],currentMetric,currentViz);$('progressTable').innerHTML='<div class="empty-state"><strong>No data in this range.</strong><span>Choose a wider time range or log another workout.</span></div>';return;}
- $('bestWeight').textContent=Math.max(...rows.map(r=>r.weight))+' lb';$('bestE1RM').textContent=Math.round(Math.max(...rows.map(r=>r.e1)))+' lb';$('bestVolume').textContent=fmt(Math.max(...rows.map(r=>r.vol)))+' lb';const key=currentMetric==='e1rm'?'e1':currentMetric==='weight'?'weight':'vol',points=aggregateRows(rows,currentMetric,currentGrouping);drawChart(points,currentMetric,currentViz);
- if(points.length>=2){const first=points[0].v,last=points.at(-1).v,pct=first?((last-first)/first*100):0;const label=currentMetric==='e1rm'?'estimated 1RM':currentMetric==='weight'?'top weight':currentGrouping==='session'?'session volume':`${currentGrouping} volume`;$('liftChange').innerHTML=`<strong class="${pct>=0?'good':'bad'}">${pct>=0?'▲':'▼'} ${Math.abs(pct).toFixed(1)}%</strong> ${label} across the selected view`;}
- else $('liftChange').textContent='Choose a wider range or log more sessions to calculate a trend.';
- const groupLabel=currentGrouping==='session'?'Session':currentGrouping[0].toUpperCase()+currentGrouping.slice(1);$('progressViewSummary').textContent=`${groupLabel} view · ${rows.length} session${rows.length===1?'':'s'} · ${currentRange==='all'?'all time':currentRange==='4w'?'last 4 weeks':currentRange==='3m'?'last 3 months':'last year'}`;
- if(currentGrouping==='session')$('progressTable').innerHTML=[...rows].reverse().map(r=>`<div class="progress-item"><strong>${fmtDate(r.date)}</strong><div class="muted">${r.sets.map(s=>`${s.weight}×${s.reps}${s.rir==null?'':` (RIR ${s.rir})`}`).join(' · ')}</div><div class="muted">Top weight ${r.weight} lb · est. 1RM ${Math.round(r.e1)} lb · volume ${fmt(r.vol)} lb</div></div>`).join('');
- else $('progressTable').innerHTML=[...points].reverse().map(p=>`<div class="progress-item"><strong>${escapeHtml(p.label)}</strong><div class="muted">${p.count} session${p.count===1?'':'s'}</div><div class="muted">${currentMetric==='e1rm'?'Best est. 1RM':currentMetric==='weight'?'Best top weight':'Total volume'}: ${chartValueLabel(p.v,currentMetric)}</div></div>`).join('');
+ const name=$('exerciseSelect').value;
+ if(!name){
+  $('bestWeight').textContent=$('bestE1RM').textContent=$('bestVolume').textContent='—';
+  $('strengthChange').textContent='Log a workout to begin tracking.';$('volumeChange').textContent='Log a workout to begin tracking.';
+  drawChart([],'e1rm',currentViz,'strengthChart');drawChart([],'volume',currentViz,'volumeChart');
+  $('progressTable').innerHTML='<div class="muted">Your exercise history will appear here.</div>';return;
+ }
+ const allRows=exerciseRows(name),rows=filterRowsByRange(allRows,currentRange);
+ if(!rows.length){
+  $('bestWeight').textContent=$('bestE1RM').textContent=$('bestVolume').textContent='—';
+  $('strengthChange').textContent=$('volumeChange').textContent='No sessions for this exercise in the selected range.';
+  drawChart([],'e1rm',currentViz,'strengthChart');drawChart([],'volume',currentViz,'volumeChart');
+  $('progressTable').innerHTML='<div class="empty-state"><strong>No data in this range.</strong><span>Choose a wider time range or log another workout.</span></div>';return;
+ }
+ $('bestWeight').textContent=Math.max(...rows.map(r=>r.weight))+' lb';
+ $('bestE1RM').textContent=Math.round(Math.max(...rows.map(r=>r.e1)))+' lb';
+ $('bestVolume').textContent=fmt(Math.max(...rows.map(r=>r.vol)))+' lb';
+ const strengthPoints=aggregateRows(rows,'e1rm',currentGrouping);
+ const volumePoints=aggregateRows(rows,'volume',currentGrouping);
+ drawChart(strengthPoints,'e1rm',currentViz,'strengthChart');
+ drawChart(volumePoints,'volume',currentViz,'volumeChart');
+ $('strengthChange').innerHTML=changeHtml(pctChange(strengthPoints),'estimated 1RM');
+ $('volumeChange').innerHTML=changeHtml(pctChange(volumePoints),`${currentGrouping} volume`);
+ const groupLabel=currentGrouping==='week'?'Weekly':'Monthly';
+ $('progressViewSummary').textContent=`${groupLabel} view · ${rows.length} session${rows.length===1?'':'s'} · ${rangeLabel(currentRange)}`;
+ const strengthByKey=new Map(strengthPoints.map(p=>[periodInfo(p.date,currentGrouping).key,p]));
+ const volumeByKey=new Map(volumePoints.map(p=>[periodInfo(p.date,currentGrouping).key,p]));
+ const keys=[...new Set([...strengthByKey.keys(),...volumeByKey.keys()])].sort().reverse();
+ $('progressTable').innerHTML=keys.map(k=>{
+   const sp=strengthByKey.get(k),vp=volumeByKey.get(k),p=sp||vp;
+   return `<div class="progress-item"><strong>${escapeHtml(p.label)}</strong><div class="muted">${p.count} session${p.count===1?'':'s'}</div><div class="muted">Best est. 1RM: ${sp?chartValueLabel(sp.v,'e1rm'):'—'} · Total volume: ${vp?chartValueLabel(vp.v,'volume'):'—'}</div></div>`;
+ }).join('');
 }
 
-document.querySelectorAll('.metric').forEach(b=>b.addEventListener('click',()=>{currentMetric=b.dataset.metric;document.querySelectorAll('.metric').forEach(x=>x.classList.toggle('active',x===b));renderProgress();}));
 document.querySelectorAll('.grouping').forEach(b=>b.addEventListener('click',()=>{currentGrouping=b.dataset.group;document.querySelectorAll('.grouping').forEach(x=>x.classList.toggle('active',x===b));renderProgress();}));
 document.querySelectorAll('.range').forEach(b=>b.addEventListener('click',()=>{currentRange=b.dataset.range;document.querySelectorAll('.range').forEach(x=>x.classList.toggle('active',x===b));renderProgress();}));
 document.querySelectorAll('.viz').forEach(b=>b.addEventListener('click',()=>{currentViz=b.dataset.viz;document.querySelectorAll('.viz').forEach(x=>x.classList.toggle('active',x===b));renderProgress();}));
