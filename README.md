@@ -6,6 +6,8 @@ Lift Growth is a Progressive Web App (PWA) designed primarily for iPhone. It can
 
 ## Features
 
+- **Expanded exercise library** with common machine and cable movements including Incline Press, Chest Press, Seated Row, Rear Delt, Pec Fly, Bicep Curls, and Tricep Extensions.
+
 - **Searchable exercise library** with standardized lift names while still allowing custom exercises.
 - **Previous-session reference** shown while logging each exercise, including prior sets, top weight, and estimated 1RM.
 
@@ -71,6 +73,13 @@ If an earlier version of Lift Growth is already published, replace the correspon
 
 The service worker uses versioned caching so updated application resources can replace older cached versions after deployment.
 
+
+## Exercise Library
+
+The searchable exercise library includes common commercial-gym and Planet Fitness-style movements across chest, shoulders, back, arms, legs, glutes, calves, hips, and core. It includes common machine, cable, dumbbell, Smith-machine, and bodyweight variations.
+
+Exercise aliases are normalized so common naming variations such as `Seated Rows` / `Seated Row`, `Hip Abductors` / `Hip Abduction Machine`, and `Squats` / `Squat` feed the same progress history instead of creating duplicate lift records. Custom exercise names are still supported.
+
 ## Data & Privacy
 
 Lift Growth currently has no user account, cloud database, or external workout-data service. Routine and workout history are stored in the browser's local storage on the device where the app is used.
@@ -126,3 +135,15 @@ Built as a lightweight personal strength-training tracker with an emphasis on qu
 Lift Growth records **each working set individually**. This makes progress metrics more accurate when the weight, reps, or RIR differ from set to set. A routine defines the planned exercise order and target sets/reps; when you start it, those targets are expanded into editable set rows for that workout.
 
 Existing workouts saved by earlier versions remain supported and are normalized automatically when displayed or analyzed.
+
+
+## Progress views
+
+Lift Growth can now analyze each exercise at several time scales:
+
+- **Session** — every individual workout session.
+- **Week** — groups sessions by week. For estimated 1RM and top weight, the best result in the week is shown; volume is summed across the week.
+- **Month** — the same aggregation at a monthly level.
+- **Year** — a high-level annual view for long-term progress.
+
+The Progress screen also includes **4-week, 3-month, 1-year, and all-time** ranges and can display either a **trend line** or **bar chart**.

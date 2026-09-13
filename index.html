@@ -77,10 +77,40 @@
       <div class="card">
         <h2>Lift progress</h2>
         <label>Exercise<select id="exerciseSelect"></select></label>
-        <div class="metric-tabs" role="group" aria-label="Chart metric">
-          <button class="metric active" data-metric="e1rm">Estimated 1RM</button>
-          <button class="metric" data-metric="weight">Top weight</button>
-          <button class="metric" data-metric="volume">Volume</button>
+        <div class="progress-controls">
+          <div>
+            <span class="control-label">Metric</span>
+            <div class="metric-tabs" role="group" aria-label="Chart metric">
+              <button class="metric active" data-metric="e1rm">Estimated 1RM</button>
+              <button class="metric" data-metric="weight">Top weight</button>
+              <button class="metric" data-metric="volume">Volume</button>
+            </div>
+          </div>
+          <div>
+            <span class="control-label">Group by</span>
+            <div class="progress-toggle-grid four" role="group" aria-label="Time grouping">
+              <button class="grouping active" data-group="session">Session</button>
+              <button class="grouping" data-group="week">Week</button>
+              <button class="grouping" data-group="month">Month</button>
+              <button class="grouping" data-group="year">Year</button>
+            </div>
+          </div>
+          <div>
+            <span class="control-label">Time range</span>
+            <div class="progress-toggle-grid four" role="group" aria-label="Time range">
+              <button class="range" data-range="4w">4W</button>
+              <button class="range" data-range="3m">3M</button>
+              <button class="range" data-range="1y">1Y</button>
+              <button class="range active" data-range="all">All</button>
+            </div>
+          </div>
+          <div>
+            <span class="control-label">Visualization</span>
+            <div class="progress-toggle-grid two" role="group" aria-label="Chart type">
+              <button class="viz active" data-viz="line">Trend line</button>
+              <button class="viz" data-viz="bar">Bars</button>
+            </div>
+          </div>
         </div>
         <div class="stats-grid">
           <div><strong id="bestWeight">—</strong><small>Best weight</small></div>
@@ -88,6 +118,7 @@
           <div><strong id="bestVolume">—</strong><small>Best session volume</small></div>
         </div>
         <div id="liftChange" class="trend-callout muted">Log at least two sessions to see progress.</div>
+        <div id="progressViewSummary" class="progress-view-summary muted">Session view · all time</div>
         <div class="chart-wrap"><canvas id="chart" width="720" height="380"></canvas></div>
         <div id="progressTable" class="stack"></div>
       </div>

@@ -3,18 +3,70 @@ const ROUTINE_KEY='liftGrowthRoutinesV2';
 let workouts=safeParse(localStorage.getItem(WORKOUT_KEY),[]);
 let routines=safeParse(localStorage.getItem(ROUTINE_KEY),[]);
 let currentMetric='e1rm';
+let currentGrouping='session';
+let currentRange='all';
+let currentViz='line';
 let deferredPrompt=null;
 const $=id=>document.getElementById(id);
 const today=()=>new Date().toISOString().slice(0,10);
 
 const EXERCISE_LIBRARY=[
- 'Bench Press','Incline Bench Press','Decline Bench Press','Dumbbell Bench Press','Incline Dumbbell Bench Press','Chest Press Machine','Cable Fly','Pec Deck',
- 'Shoulder Press','Dumbbell Shoulder Press','Arnold Press','Lateral Raise','Cable Lateral Raise','Rear Delt Fly',
- 'Lat Pulldown','Neutral Grip Lat Pulldown','Cable Row','Seated Row Machine','Chest Supported Row','One-Arm Dumbbell Row','Straight-Arm Pulldown',
- 'Biceps Curl','Dumbbell Curl','Hammer Curl','Preacher Curl','Cable Curl','Triceps Pushdown','Overhead Triceps Extension','Skull Crusher',
- 'Back Squat','Front Squat','Hack Squat','Leg Press','Romanian Deadlift','Good Morning','Leg Extension','Leg Curl','Seated Leg Curl','Calf Raise','Seated Calf Raise',
- 'Hip Abduction Machine','Hip Adduction Machine','Bulgarian Split Squat','Walking Lunge','Goblet Squat'
-];
+ // Chest
+ 'Bench Press','Incline Press','Incline Bench Press','Decline Bench Press','Dumbbell Bench Press','Incline Dumbbell Bench Press','Chest Press','Chest Press Machine','Smith Machine Bench Press','Smith Machine Incline Press','Cable Fly','Pec Fly','Pec Deck','Push-Up',
+ // Shoulders
+ 'Shoulder Press','Dumbbell Shoulder Press','Machine Shoulder Press','Smith Machine Shoulder Press','Arnold Press','Lateral Raise','Dumbbell Lateral Raise','Cable Lateral Raise','Front Raise','Rear Delt','Rear Delt Fly','Reverse Pec Deck',
+ // Back
+ 'Lat Pulldown','Neutral Grip Lat Pulldown','Wide Grip Lat Pulldown','Close Grip Lat Pulldown','Assisted Pull-Up','Cable Row','Seated Row','Seated Row Machine','Chest Supported Row','One-Arm Dumbbell Row','Straight-Arm Pulldown','Machine Row','Back Extension',
+ // Biceps
+ 'Bicep Curls','Biceps Curl','Dumbbell Curl','Alternating Dumbbell Curl','Hammer Curl','Preacher Curl','Machine Preacher Curl','Cable Curl','Incline Dumbbell Curl',
+ // Triceps
+ 'Tricep Extensions','Triceps Extension','Triceps Pushdown','Rope Triceps Pushdown','Overhead Triceps Extension','Cable Overhead Triceps Extension','Skull Crusher','Assisted Dip','Dip Machine',
+ // Quads / hamstrings / glutes
+ 'Squat','Back Squat','Front Squat','Smith Machine Squat','Goblet Squat','Hack Squat','Leg Press','Single-Leg Press','Leg Extension','Leg Curl','Seated Leg Curl','Lying Leg Curl','Romanian Deadlift','Deadlift','Smith Machine Romanian Deadlift','Good Morning','Bulgarian Split Squat','Walking Lunge','Reverse Lunge','Hip Thrust','Smith Machine Hip Thrust','Glute Kickback','Cable Glute Kickback',
+ // Hips / calves
+ 'Hip Abduction Machine','Hip Adduction Machine','Standing Hip Abduction','Standing Hip Adduction','Calf Extension','Calf Raise','Standing Calf Raise','Seated Calf Raise','Leg Press Calf Raise',
+ // Core
+ 'Abdominal Crunch Machine','Cable Crunch','Hanging Knee Raise','Captain Chair Knee Raise','Plank','Side Plank','Torso Rotation Machine','Russian Twist',
+ // Common cable / functional movements
+ 'Face Pull','Cable Wood Chop','Farmer Carry'
+]
+
+const EXERCISE_ALIASES={
+ 'seated rows':'Seated Row',
+ 'seated row':'Seated Row',
+ 'bicep curl':'Bicep Curls',
+ 'biceps curls':'Bicep Curls',
+ 'bicep curls':'Bicep Curls',
+ 'tricep extension':'Tricep Extensions',
+ 'tricep extensions':'Tricep Extensions',
+ 'triceps extension':'Tricep Extensions',
+ 'triceps extensions':'Tricep Extensions',
+ 'leg curls':'Leg Curl',
+ 'leg curl':'Leg Curl',
+ 'leg extensions':'Leg Extension',
+ 'leg extension':'Leg Extension',
+ 'calf extensions':'Calf Extension',
+ 'calf extension':'Calf Extension',
+ 'calf raises':'Calf Raise',
+ 'hip abductors':'Hip Abduction Machine',
+ 'hip abductor':'Hip Abduction Machine',
+ 'hip abduction':'Hip Abduction Machine',
+ 'hip adductors':'Hip Adduction Machine',
+ 'hip adductor':'Hip Adduction Machine',
+ 'hip adduction':'Hip Adduction Machine',
+ 'hip aductors':'Hip Adduction Machine',
+ 'hip aductor':'Hip Adduction Machine',
+ 'squats':'Squat',
+ 'squat':'Squat',
+ 'deadlifts':'Deadlift',
+ 'romanian deadlifts':'Romanian Deadlift',
+ 'rdl':'Romanian Deadlift',
+ 'rdls':'Romanian Deadlift',
+ 'pec fly machine':'Pec Fly',
+ 'rear delts':'Rear Delt',
+ 'lat pull down':'Lat Pulldown',
+ 'lat pull downs':'Lat Pulldown'
+}
 
 const starters=[
  {id:'starter-upper-a',name:'Upper A',exercises:[['Bench Press',3,6],['Lat Pulldown',3,8],['Shoulder Press',3,8],['Cable Row',3,10],['Biceps Curl',3,10],['Triceps Pushdown',3,10]]},
@@ -41,6 +93,8 @@ function exerciseCatalog(){
 }
 function canonicalExerciseName(value){
  const clean=String(value||'').trim(); if(!clean)return '';
+ const alias=EXERCISE_ALIASES[clean.toLowerCase()];
+ if(alias)return alias;
  const exact=exerciseCatalog().find(n=>n.toLowerCase()===clean.toLowerCase());
  return exact||clean;
 }
@@ -88,9 +142,10 @@ function setupExerciseAutocomplete(input,menu,onPick){
 
 // Normalizes old workouts (weight/reps/sets on an exercise) into the new per-set structure.
 function normalizeExercise(ex){
- if(Array.isArray(ex.sets)) return {name:ex.name,sets:ex.sets.map(s=>({weight:+s.weight||0,reps:+s.reps||0,rir:s.rir==null||s.rir===''?null:+s.rir}))};
+ const name=canonicalExerciseName(ex.name||'');
+ if(Array.isArray(ex.sets)) return {name,sets:ex.sets.map(s=>({weight:+s.weight||0,reps:+s.reps||0,rir:s.rir==null||s.rir===''?null:+s.rir}))};
  const count=Math.max(1,+ex.sets||1);
- return {name:ex.name,sets:Array.from({length:count},()=>({weight:+ex.weight||0,reps:+ex.reps||0,rir:ex.rir==null?null:+ex.rir}))};
+ return {name,sets:Array.from({length:count},()=>({weight:+ex.weight||0,reps:+ex.reps||0,rir:ex.rir==null?null:+ex.rir}))};
 }
 function normalizedWorkout(w){return {...w,exercises:(w.exercises||[]).map(normalizeExercise)}}
 function exerciseVolume(ex){return normalizeExercise(ex).sets.reduce((sum,s)=>sum+s.weight*s.reps,0)}
@@ -243,15 +298,26 @@ function renderHistory(){
 function allExerciseNames(){return [...new Set(workouts.flatMap(w=>normalizedWorkout(w).exercises.map(e=>e.name)))].sort((a,b)=>a.localeCompare(b))}
 function renderExerciseSelect(){const s=$('exerciseSelect'),cur=s.value,names=allExerciseNames();s.innerHTML=names.map(n=>`<option>${escapeHtml(n)}</option>`).join('');if(names.includes(cur))s.value=cur;s.onchange=renderProgress;renderProgress()}
 
-function drawChart(points,metric){
- const c=$('chart'),ctx=c.getContext('2d');const cssW=Math.max(280,c.parentElement.clientWidth-2);const ratio=Math.min(window.devicePixelRatio||1,2);c.width=cssW*ratio;c.height=360*ratio;c.style.width=cssW+'px';c.style.height='360px';ctx.scale(ratio,ratio);const w=cssW,h=360,pad={l:58,r:20,t:30,b:54};ctx.clearRect(0,0,w,h);ctx.font='13px -apple-system,BlinkMacSystemFont,sans-serif';ctx.fillStyle='#9ca3af';
- if(points.length<2){ctx.fillText('Log at least two sessions to see a trend.',22,55);return;}
- const vals=points.map(p=>p.v),rawMin=Math.min(...vals),rawMax=Math.max(...vals),spread=Math.max(rawMax-rawMin,rawMax*.08,1),min=Math.max(0,rawMin-spread*.35),max=rawMax+spread*.35;
+function chartValueLabel(v,metric){return metric==='volume'?`${fmt(v)} lb`:`${Math.round(v)} lb`}
+function shortPointLabel(p){return p.label||fmtDate(p.date).replace(/, \d{4}/,'')}
+function drawChart(points,metric,viz='line'){
+ const c=$('chart'),ctx=c.getContext('2d');const cssW=Math.max(280,c.parentElement.clientWidth-2);const ratio=Math.min(window.devicePixelRatio||1,2);c.width=cssW*ratio;c.height=360*ratio;c.style.width=cssW+'px';c.style.height='360px';ctx.scale(ratio,ratio);const w=cssW,h=360,pad={l:58,r:20,t:30,b:62};ctx.clearRect(0,0,w,h);ctx.font='13px -apple-system,BlinkMacSystemFont,sans-serif';ctx.fillStyle='#9ca3af';
+ if(!points.length){ctx.fillText('No data in this time range yet.',22,55);return;}
+ const vals=points.map(p=>p.v),rawMin=Math.min(...vals),rawMax=Math.max(...vals),spread=Math.max(rawMax-rawMin,rawMax*.08,1),min=Math.max(0,rawMin-spread*.25),max=rawMax+spread*.25;
  ctx.strokeStyle='#273449';ctx.lineWidth=1;for(let i=0;i<4;i++){const y=pad.t+i*(h-pad.t-pad.b)/3;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(w-pad.r,y);ctx.stroke();const val=max-(max-min)*i/3;ctx.fillStyle='#9ca3af';ctx.textAlign='right';ctx.fillText(metric==='volume'?fmt(val):Math.round(val),pad.l-8,y+4)}
- const coords=points.map((p,i)=>({x:pad.l+(points.length===1?0:i*(w-pad.l-pad.r)/(points.length-1)),y:pad.t+(max-p.v)/(max-min)*(h-pad.t-pad.b),...p}));ctx.strokeStyle='#60a5fa';ctx.lineWidth=4;ctx.lineJoin='round';ctx.beginPath();coords.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.stroke();
- coords.forEach((p,i)=>{ctx.fillStyle='#f8fafc';ctx.beginPath();ctx.arc(p.x,p.y,5,0,Math.PI*2);ctx.fill();if(i===0||i===coords.length-1){ctx.fillStyle='#9ca3af';ctx.textAlign=i===0?'left':'right';ctx.fillText(fmtDate(p.date).replace(/, \d{4}/,''),p.x,h-22)}});
- ctx.fillStyle='#f8fafc';ctx.textAlign='right';const last=coords.at(-1);ctx.fillText(metric==='volume'?`${fmt(last.v)} lb`:`${Math.round(last.v)} lb`,Math.min(last.x,w-pad.r),Math.max(18,last.y-12));
+ const plotW=w-pad.l-pad.r,plotH=h-pad.t-pad.b;
+ if(viz==='bar'){
+  const slot=plotW/Math.max(points.length,1),barW=Math.max(6,Math.min(42,slot*.62));
+  points.forEach((p,i)=>{const x=pad.l+slot*i+slot/2-barW/2,y=pad.t+(max-p.v)/(max-min)*plotH,base=pad.t+(max-min)/(max-min)*plotH;ctx.fillStyle='#60a5fa';ctx.fillRect(x,y,barW,Math.max(2,base-y));if(points.length<=8||i===0||i===points.length-1){ctx.fillStyle='#9ca3af';ctx.textAlign='center';ctx.fillText(shortPointLabel(p),x+barW/2,h-28)}});
+ }else{
+  const coords=points.map((p,i)=>({x:pad.l+(points.length===1?plotW/2:i*plotW/(points.length-1)),y:pad.t+(max-p.v)/(max-min)*plotH,...p}));ctx.strokeStyle='#60a5fa';ctx.lineWidth=4;ctx.lineJoin='round';ctx.beginPath();coords.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.stroke();coords.forEach((p,i)=>{ctx.fillStyle='#f8fafc';ctx.beginPath();ctx.arc(p.x,p.y,5,0,Math.PI*2);ctx.fill();if(points.length<=8||i===0||i===coords.length-1){ctx.fillStyle='#9ca3af';ctx.textAlign=i===0?'left':i===coords.length-1?'right':'center';ctx.fillText(shortPointLabel(p),p.x,h-28)}});
+ }
+ ctx.fillStyle='#f8fafc';ctx.textAlign='right';const last=points.at(-1);ctx.fillText(chartValueLabel(last.v,metric),w-pad.r,20);
 }
+function parseLocalDate(s){const [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d,12,0,0)}
+function filterRowsByRange(rows,range){if(range==='all'||!rows.length)return rows;const latest=parseLocalDate(rows.at(-1).date);const start=new Date(latest);if(range==='4w')start.setDate(start.getDate()-28);if(range==='3m')start.setMonth(start.getMonth()-3);if(range==='1y')start.setFullYear(start.getFullYear()-1);return rows.filter(r=>parseLocalDate(r.date)>=start)}
+function periodInfo(date,group){const d=parseLocalDate(date);if(group==='session')return {key:date,label:fmtDate(date).replace(/, \d{4}/,'')};if(group==='week'){const monday=new Date(d);monday.setDate(d.getDate()-((d.getDay()+6)%7));const y=monday.getFullYear(),m=String(monday.getMonth()+1).padStart(2,'0'),day=String(monday.getDate()).padStart(2,'0');return {key:`${y}-${m}-${day}`,label:`Wk ${new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric'}).format(monday)}`}}if(group==='month')return {key:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`,label:new Intl.DateTimeFormat(undefined,{month:'short',year:'2-digit'}).format(d)};return {key:String(d.getFullYear()),label:String(d.getFullYear())}}
+function aggregateRows(rows,metric,group){const key=metric==='e1rm'?'e1':metric==='weight'?'weight':'vol';if(group==='session')return rows.map(r=>({v:r[key],date:r.date,label:fmtDate(r.date).replace(/, \d{4}/,''),count:1,rows:[r]}));const buckets=new Map();rows.forEach(r=>{const p=periodInfo(r.date,group);if(!buckets.has(p.key))buckets.set(p.key,{...p,rows:[]});buckets.get(p.key).rows.push(r)});return [...buckets.values()].sort((a,b)=>a.key.localeCompare(b.key)).map(b=>({date:b.rows[0].date,label:b.label,count:b.rows.length,rows:b.rows,v:metric==='volume'?b.rows.reduce((sum,r)=>sum+r.vol,0):Math.max(...b.rows.map(r=>r[key]))}))}
 function exerciseRows(name){
  const rows=[];
  workouts.forEach(w=>{
@@ -263,14 +329,20 @@ function exerciseRows(name){
  return rows.sort((a,b)=>a.date.localeCompare(b.date));
 }
 function renderProgress(){
- const name=$('exerciseSelect').value;if(!name){$('bestWeight').textContent=$('bestE1RM').textContent=$('bestVolume').textContent='—';$('liftChange').textContent='Log a workout to begin tracking.';drawChart([],currentMetric);$('progressTable').innerHTML='<div class="muted">Your exercise history will appear here.</div>';return;}
- const rows=exerciseRows(name);$('bestWeight').textContent=Math.max(...rows.map(r=>r.weight))+' lb';$('bestE1RM').textContent=Math.round(Math.max(...rows.map(r=>r.e1)))+' lb';$('bestVolume').textContent=fmt(Math.max(...rows.map(r=>r.vol)))+' lb';const key=currentMetric==='e1rm'?'e1':currentMetric==='weight'?'weight':'vol';drawChart(rows.map(r=>({v:r[key],date:r.date})),currentMetric);
- if(rows.length>=2){const first=rows[0][key],last=rows.at(-1)[key],pct=first?((last-first)/first*100):0;const label=currentMetric==='e1rm'?'estimated 1RM':currentMetric==='weight'?'top weight':'session volume';$('liftChange').innerHTML=`<strong class="${pct>=0?'good':'bad'}">${pct>=0?'▲':'▼'} ${Math.abs(pct).toFixed(1)}%</strong> ${label} since your first logged session`;}
- else $('liftChange').textContent='Log one more session to calculate your trend.';
- $('progressTable').innerHTML=[...rows].reverse().map(r=>`<div class="progress-item"><strong>${fmtDate(r.date)}</strong><div class="muted">${r.sets.map(s=>`${s.weight}×${s.reps}${s.rir==null?'':` (RIR ${s.rir})`}`).join(' · ')}</div><div class="muted">Top weight ${r.weight} lb · est. 1RM ${Math.round(r.e1)} lb · volume ${fmt(r.vol)} lb</div></div>`).join('');
+ const name=$('exerciseSelect').value;if(!name){$('bestWeight').textContent=$('bestE1RM').textContent=$('bestVolume').textContent='—';$('liftChange').textContent='Log a workout to begin tracking.';drawChart([],currentMetric,currentViz);$('progressTable').innerHTML='<div class="muted">Your exercise history will appear here.</div>';return;}
+ const allRows=exerciseRows(name),rows=filterRowsByRange(allRows,currentRange);if(!rows.length){$('bestWeight').textContent=$('bestE1RM').textContent=$('bestVolume').textContent='—';$('liftChange').textContent='No sessions for this exercise in the selected range.';drawChart([],currentMetric,currentViz);$('progressTable').innerHTML='<div class="empty-state"><strong>No data in this range.</strong><span>Choose a wider time range or log another workout.</span></div>';return;}
+ $('bestWeight').textContent=Math.max(...rows.map(r=>r.weight))+' lb';$('bestE1RM').textContent=Math.round(Math.max(...rows.map(r=>r.e1)))+' lb';$('bestVolume').textContent=fmt(Math.max(...rows.map(r=>r.vol)))+' lb';const key=currentMetric==='e1rm'?'e1':currentMetric==='weight'?'weight':'vol',points=aggregateRows(rows,currentMetric,currentGrouping);drawChart(points,currentMetric,currentViz);
+ if(points.length>=2){const first=points[0].v,last=points.at(-1).v,pct=first?((last-first)/first*100):0;const label=currentMetric==='e1rm'?'estimated 1RM':currentMetric==='weight'?'top weight':currentGrouping==='session'?'session volume':`${currentGrouping} volume`;$('liftChange').innerHTML=`<strong class="${pct>=0?'good':'bad'}">${pct>=0?'▲':'▼'} ${Math.abs(pct).toFixed(1)}%</strong> ${label} across the selected view`;}
+ else $('liftChange').textContent='Choose a wider range or log more sessions to calculate a trend.';
+ const groupLabel=currentGrouping==='session'?'Session':currentGrouping[0].toUpperCase()+currentGrouping.slice(1);$('progressViewSummary').textContent=`${groupLabel} view · ${rows.length} session${rows.length===1?'':'s'} · ${currentRange==='all'?'all time':currentRange==='4w'?'last 4 weeks':currentRange==='3m'?'last 3 months':'last year'}`;
+ if(currentGrouping==='session')$('progressTable').innerHTML=[...rows].reverse().map(r=>`<div class="progress-item"><strong>${fmtDate(r.date)}</strong><div class="muted">${r.sets.map(s=>`${s.weight}×${s.reps}${s.rir==null?'':` (RIR ${s.rir})`}`).join(' · ')}</div><div class="muted">Top weight ${r.weight} lb · est. 1RM ${Math.round(r.e1)} lb · volume ${fmt(r.vol)} lb</div></div>`).join('');
+ else $('progressTable').innerHTML=[...points].reverse().map(p=>`<div class="progress-item"><strong>${escapeHtml(p.label)}</strong><div class="muted">${p.count} session${p.count===1?'':'s'}</div><div class="muted">${currentMetric==='e1rm'?'Best est. 1RM':currentMetric==='weight'?'Best top weight':'Total volume'}: ${chartValueLabel(p.v,currentMetric)}</div></div>`).join('');
 }
 
 document.querySelectorAll('.metric').forEach(b=>b.addEventListener('click',()=>{currentMetric=b.dataset.metric;document.querySelectorAll('.metric').forEach(x=>x.classList.toggle('active',x===b));renderProgress();}));
+document.querySelectorAll('.grouping').forEach(b=>b.addEventListener('click',()=>{currentGrouping=b.dataset.group;document.querySelectorAll('.grouping').forEach(x=>x.classList.toggle('active',x===b));renderProgress();}));
+document.querySelectorAll('.range').forEach(b=>b.addEventListener('click',()=>{currentRange=b.dataset.range;document.querySelectorAll('.range').forEach(x=>x.classList.toggle('active',x===b));renderProgress();}));
+document.querySelectorAll('.viz').forEach(b=>b.addEventListener('click',()=>{currentViz=b.dataset.viz;document.querySelectorAll('.viz').forEach(x=>x.classList.toggle('active',x===b));renderProgress();}));
 function switchTab(id){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.dataset.tab===id));document.querySelectorAll('.panel').forEach(x=>x.classList.toggle('active',x.id===id))}
 document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
 function renderAll(){renderDashboard();renderRoutines();renderHistory();renderExerciseSelect()}
