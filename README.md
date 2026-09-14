@@ -6,6 +6,11 @@ Lift Growth is a Progressive Web App (PWA) designed primarily for iPhone. It can
 
 ## Features
 
+### Import workout text
+
+Paste an ordinary workout plan from Notes, Messages, a coach, ChatGPT, or any other source. Lift Growth recognizes common exercise names and formats such as `3 × 8`, `3 sets of 10 at 220 lb`, and `120 lb for 10 × 3`. Preview the result before importing it as a workout or saving it as a reusable routine. No account or external AI connection is required; parsing happens locally in the browser.
+
+
 - **Expanded exercise library** with common machine and cable movements including Incline Press, Chest Press, Seated Row, Rear Delt, Pec Fly, Bicep Curls, and Tricep Extensions.
 
 - **Searchable exercise library** with standardized lift names while still allowing custom exercises.
@@ -152,3 +157,37 @@ The Progress screen also includes **4-week, 3-month, 1-year, and all-time** rang
 ## Progress focus in v8
 
 The Progress screen now defaults to a **weekly** comparison over the **last 3 months**, with a one-tap switch to **monthly** grouping as more history accumulates. It shows two charts together: **Strength / PR trend** (best estimated 1RM per period) and **Training volume** (total volume per period), plus percent change for each.
+
+
+## Data persistence and backups
+
+Lift Growth stores saved workouts and routines locally on the device. Workout entries in progress are also automatically saved as a draft and restored after the app is closed and reopened.
+
+The **History → Data & backup** section provides:
+
+- **Export backup** — downloads a JSON backup containing workouts and routines.
+- **Import backup** — restores a previously exported Lift Growth backup.
+- A best-effort request for persistent browser storage when supported.
+
+Because the app is local-first, clearing Safari/site data can still remove browser storage. Keep periodic exported backups if the workout history is important to you.
+
+
+## v11 storage reliability
+
+Lift Growth now uses IndexedDB as its primary on-device database, with localStorage retained only as a fallback and migration source. On launch, the app writes and reads a small probe record and reports **Storage verified** when durable storage is working.
+
+### Quick text import
+
+Lift Growth can turn ordinary workout text into a structured workout or reusable routine. On the **Log** tab, tap **Paste & parse**, then either paste from the clipboard or paste manually into the text box. The preview updates automatically so you can confirm the recognized exercises, sets, reps, and weights before choosing **Start workout** or **Save as routine**.
+
+Example input:
+
+```text
+Upper Body
+Incline Press — 3 x 8 at 70 lb
+Lat Pulldown — 3 x 10 at 120 lb
+Seated Row — 3 x 10 at 110 lb
+Bicep Curls — 3 x 12 at 25 lb
+```
+
+The importer is source-agnostic: the text can come from ChatGPT, Notes, Messages, a coach, or anywhere else. Direct clipboard access depends on browser/iOS permission; when it is blocked, the app provides a normal manual paste fallback.

@@ -1,7 +1,11 @@
 const WORKOUT_KEY='liftGrowthWorkoutsV1';
 const ROUTINE_KEY='liftGrowthRoutinesV2';
-let workouts=safeParse(localStorage.getItem(WORKOUT_KEY),[]);
-let routines=safeParse(localStorage.getItem(ROUTINE_KEY),[]);
+const DRAFT_KEY='liftGrowthWorkoutDraftV1';
+const DB_NAME='liftGrowthDB';
+const DB_STORE='kv';
+let workouts=[];
+let routines=[];
+let dbPromise=null;
 let currentGrouping='week';
 let currentRange='3m';
 let currentViz='line';
@@ -78,8 +82,59 @@ const starters=[
 
 function safeParse(v,fallback){try{return v?JSON.parse(v):fallback}catch{return fallback}}
 function uid(){return crypto?.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random().toString(16).slice(2)}`}
-function saveWorkouts(){localStorage.setItem(WORKOUT_KEY,JSON.stringify(workouts))}
-function saveRoutines(){localStorage.setItem(ROUTINE_KEY,JSON.stringify(routines))}
+function setStorageStatus(text,isError=false){const el=$('storageStatus');if(!el)return;el.textContent=text;el.style.color=isError?'#fca5a5':'';}
+function safeLocalGet(key){try{return localStorage.getItem(key)}catch(err){console.warn('localStorage read unavailable',err);return null}}
+function safeLocalSet(key,value){try{localStorage.setItem(key,value);return true}catch(err){console.warn('localStorage write unavailable',err);return false}}
+function safeLocalRemove(key){try{localStorage.removeItem(key)}catch(err){console.warn('localStorage remove unavailable',err)}}
+function openDb(){
+ if(dbPromise)return dbPromise;
+ dbPromise=new Promise((resolve,reject)=>{
+  if(!('indexedDB' in window)){reject(new Error('IndexedDB unavailable'));return;}
+  const req=indexedDB.open(DB_NAME,1);
+  req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains(DB_STORE))db.createObjectStore(DB_STORE)};
+  req.onsuccess=()=>resolve(req.result);
+  req.onerror=()=>reject(req.error||new Error('IndexedDB open failed'));
+ });
+ return dbPromise;
+}
+async function idbGet(key){const db=await openDb();return new Promise((resolve,reject)=>{const tx=db.transaction(DB_STORE,'readonly');const req=tx.objectStore(DB_STORE).get(key);req.onsuccess=()=>resolve(req.result??null);req.onerror=()=>reject(req.error);});}
+async function idbSet(key,value){const db=await openDb();return new Promise((resolve,reject)=>{const tx=db.transaction(DB_STORE,'readwrite');tx.objectStore(DB_STORE).put(value,key);tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('IndexedDB write aborted'));});}
+async function idbDelete(key){const db=await openDb();return new Promise((resolve,reject)=>{const tx=db.transaction(DB_STORE,'readwrite');tx.objectStore(DB_STORE).delete(key);tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error);});}
+async function storageGet(key){
+ try{const v=await idbGet(key);if(v!=null)return v;}catch(err){console.warn('IndexedDB read failed; using localStorage fallback',err)}
+ return safeLocalGet(key);
+}
+async function storageSet(key,value){
+ let idbOk=false;
+ try{await idbSet(key,value);idbOk=true;}catch(err){console.error('IndexedDB write failed',err)}
+ const localOk=safeLocalSet(key,value);
+ if(idbOk){setStorageStatus('Saved on this device');return true;}
+ if(localOk){setStorageStatus('Saved using fallback storage');return true;}
+ setStorageStatus('Storage unavailable',true);return false;
+}
+async function storageDelete(key){try{await idbDelete(key)}catch(err){console.warn('IndexedDB delete failed',err)}safeLocalRemove(key)}
+async function saveWorkouts(){return storageSet(WORKOUT_KEY,JSON.stringify(workouts))}
+async function saveRoutines(){return storageSet(ROUTINE_KEY,JSON.stringify(routines))}
+function serializeDraft(){return {date:$('date')?.value||today(),name:$('workoutName')?.value||'',routineId:$('routineQuickSelect')?.value||'',exercises:[...document.querySelectorAll('#exerciseRows .exercise-card')].map(card=>({name:card.querySelector('.exercise-name')?.value||'',sets:[...card.querySelectorAll('.set-entry')].map(row=>({weight:row.querySelector('.set-weight')?.value||'',reps:row.querySelector('.set-reps')?.value||'',rir:row.querySelector('.set-rir')?.value||''}))}))}}
+let draftTimer=null;
+function saveDraft(){clearTimeout(draftTimer);draftTimer=setTimeout(()=>{storageSet(DRAFT_KEY,JSON.stringify(serializeDraft()))},180)}
+async function deleteDraft(){await storageDelete(DRAFT_KEY)}
+async function restoreDraft(){const d=safeParse(await storageGet(DRAFT_KEY),null);if(!d||!Array.isArray(d.exercises)||!d.exercises.length)return false;$('date').value=d.date||today();$('workoutName').value=d.name||'';$('exerciseRows').innerHTML='';d.exercises.forEach(e=>addExercise(e.name||'',Math.max(1,e.sets?.length||1),'',e.sets||[]));if(d.routineId&&routines.some(r=>r.id===d.routineId))$('routineQuickSelect').value=d.routineId;return true}
+async function loadPersistentData(){
+ const storedWorkouts=safeParse(await storageGet(WORKOUT_KEY),[]);
+ const storedRoutines=safeParse(await storageGet(ROUTINE_KEY),[]);
+ workouts=Array.isArray(storedWorkouts)?storedWorkouts:[];
+ routines=Array.isArray(storedRoutines)?storedRoutines:[];
+ // Migrate any existing localStorage data into IndexedDB on first v11 launch.
+ if(workouts.length)await storageSet(WORKOUT_KEY,JSON.stringify(workouts));
+ if(routines.length)await storageSet(ROUTINE_KEY,JSON.stringify(routines));
+}
+async function verifyStorage(){
+ const key='liftGrowthStorageProbe';const value=`ok-${Date.now()}`;
+ try{await storageSet(key,value);const read=await storageGet(key);await storageDelete(key);if(read===value){setStorageStatus('Storage verified');return true;}}catch(err){console.error('Storage verification failed',err)}
+ setStorageStatus('Storage verification failed',true);return false;
+}
+async function requestPersistentStorage(){try{if(navigator.storage?.persist){await navigator.storage.persist()}}catch(err){console.warn('Persistent storage request failed',err)}}
 function escapeHtml(s=''){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
 function e1rm(w,r){return r===1?w:w*(1+r/30)}
 function fmt(n){return Math.round(n).toLocaleString()}
@@ -189,7 +244,7 @@ function addExercise(name='',setCount=3,targetReps='',prefillSets=null){
  renderPreviousPerformance(node);
 }
 function clearWorkout(){
- $('workoutName').value='';$('routineQuickSelect').value='';$('exerciseRows').innerHTML='';addExercise();
+ $('workoutName').value='';$('routineQuickSelect').value='';$('exerciseRows').innerHTML='';addExercise();deleteDraft();
 }
 $('addExercise').addEventListener('click',()=>addExercise('',3,''));
 $('clearWorkout').addEventListener('click',clearWorkout);
@@ -208,7 +263,7 @@ $('routineQuickSelect').addEventListener('change',e=>{
  if(r)loadRoutineIntoLog(r);
 });
 
-$('saveWorkout').addEventListener('click',()=>{
+$('saveWorkout').addEventListener('click',async()=>{
  const exercises=[...document.querySelectorAll('#exerciseRows .exercise-card')].map(card=>({
   name:canonicalExerciseName(card.querySelector('.exercise-name').value),
   sets:[...card.querySelectorAll('.set-entry')].map(row=>({
@@ -219,7 +274,147 @@ $('saveWorkout').addEventListener('click',()=>{
  })).filter(x=>x.name&&x.sets.length);
  if(!exercises.length){alert('Add at least one exercise with a completed set (weight and reps).');return;}
  workouts.push({id:uid(),date:$('date').value||today(),name:$('workoutName').value.trim()||'Workout',exercises});
- workouts.sort((a,b)=>a.date.localeCompare(b.date));saveWorkouts();clearWorkout();$('date').value=today();renderAll();alert('Workout saved.');
+ workouts.sort((a,b)=>a.date.localeCompare(b.date));const saved=await saveWorkouts();if(!saved){alert('Lift Growth could not save this workout on this device. Please export a backup and try again.');return;}await deleteDraft();clearWorkout();$('date').value=today();renderAll();alert('Workout saved on this device.');
+});
+
+
+// v9: import ordinary workout text from notes, messages, coaches, or AI-generated plans.
+function titleCaseExercise(value){
+ return String(value||'').trim().replace(/\b\w/g,c=>c.toUpperCase());
+}
+function cleanImportLine(line){
+ return String(line||'')
+  .replace(/^\s*(?:[-*•▪◦]+|\d+[.)])\s*/, '')
+  .replace(/\*\*/g,'')
+  .replace(/^#+\s*/,'')
+  .trim();
+}
+function findExerciseInText(line){
+ const lower=line.toLowerCase();
+ const names=[...exerciseCatalog(),...Object.keys(EXERCISE_ALIASES)].sort((a,b)=>b.length-a.length);
+ const found=names.find(name=>{
+  const n=name.toLowerCase();
+  const i=lower.indexOf(n);
+  if(i<0)return false;
+  const before=i===0?' ':lower[i-1], after=i+n.length>=lower.length?' ':lower[i+n.length];
+  return !/[a-z]/.test(before)&&!/[a-z]/.test(after);
+ });
+ return found?canonicalExerciseName(found):'';
+}
+function inferCustomExerciseName(line){
+ let name=line
+  .replace(/\([^)]*\)/g,' ')
+  .split(/\s[-–—:]\s|:/)[0]
+  .replace(/\b\d+(?:\.\d+)?\s*(?:lb|lbs|pounds?|kg|kgs)?\b.*$/i,'')
+  .replace(/\b(?:sets?|reps?|at|for|x|×|@)\b.*$/i,'')
+  .trim();
+ if(!name || name.length>55)return '';
+ return canonicalExerciseName(titleCaseExercise(name));
+}
+function parseWorkoutLine(raw){
+ const line=cleanImportLine(raw);
+ if(!line)return null;
+ let sets=null,reps=null,weight=null;
+ let m;
+ // 3 sets of 8-10 at 165 lb / 3 sets x 8 reps @ 165
+ m=line.match(/(\d+)\s*sets?\s*(?:of|x|×)?\s*(\d+)(?:\s*[-–]\s*\d+)?\s*(?:reps?)?(?:.*?(?:at|@)\s*(\d+(?:\.\d+)?)\s*(?:lb|lbs|pounds?|kg|kgs)?)?/i);
+ if(m){sets=+m[1];reps=+m[2];if(m[3])weight=+m[3];}
+ // 165 lb x 8 reps x 3 sets
+ if(!sets && (m=line.match(/(\d+(?:\.\d+)?)\s*(?:lb|lbs|pounds?|kg|kgs)\s*(?:x|×)\s*(\d+)\s*(?:reps?)?\s*(?:x|×)\s*(\d+)\s*sets?/i))){weight=+m[1];reps=+m[2];sets=+m[3];}
+ // 165 x 8 x 3 where the first value is clearly load-sized
+ if(!sets && (m=line.match(/\b(\d+(?:\.\d+)?)\s*(?:x|×)\s*(\d+)\s*(?:x|×)\s*(\d+)\b/i))){
+  const a=+m[1],b=+m[2],c=+m[3];
+  if(a>30 && b<=50 && c<=20){weight=a;reps=b;sets=c;} else {sets=a;reps=b;}
+ }
+ // 120 for 10x3
+ if(!sets && (m=line.match(/\b(\d+(?:\.\d+)?)\s*(?:lb|lbs|pounds?)?\s+for\s+(\d+)\s*(?:x|×)\s*(\d+)\b/i))){weight=+m[1];reps=+m[2];sets=+m[3];}
+ // 3x8 @ 165 / 3 x 8 at 165
+ if(!sets && (m=line.match(/\b(\d+)\s*(?:x|×)\s*(\d+)(?:\s*[-–]\s*\d+)?(?:\s*(?:reps?))?(?:.*?(?:at|@)\s*(\d+(?:\.\d+)?)\s*(?:lb|lbs|pounds?|kg|kgs)?)?/i))){sets=+m[1];reps=+m[2];if(m[3])weight=+m[3];}
+ // One-set shorthand: 165 x 8 / 165 lb for 8
+ if(!sets && (m=line.match(/\b(\d+(?:\.\d+)?)\s*(?:lb|lbs|pounds?)\s*(?:x|×|for)\s*(\d+)\b/i))){weight=+m[1];reps=+m[2];sets=1;}
+ if(!(sets>0&&reps>0))return null;
+ sets=Math.min(20,Math.max(1,sets));reps=Math.min(100,Math.max(1,reps));
+ let name=findExerciseInText(line)||inferCustomExerciseName(line);
+ if(!name)return null;
+ const setData=Array.from({length:sets},()=>({weight:weight||'',reps,rir:''}));
+ return {name,sets,reps,weight:weight||null,setData};
+}
+function parseWorkoutText(text){
+ const lines=String(text||'').split(/\r?\n/).map(cleanImportLine).filter(Boolean);
+ const exercises=[];
+ let name='Imported Workout';
+ for(const line of lines){
+  const parsed=parseWorkoutLine(line);
+  if(parsed){exercises.push(parsed);continue;}
+  if(name==='Imported Workout' && line.length<=60 && !/[.!?]$/.test(line)){
+   const cleaned=line.replace(/^(workout|routine|plan)\s*[:\-–—]?\s*/i,'').replace(/[:\-–—]+$/,'').trim();
+   if(cleaned && !/^(notes?|warm[- ]?up|cool[- ]?down)$/i.test(cleaned))name=cleaned;
+  }
+ }
+ return {name,exercises};
+}
+function renderImportPreview(parsed){
+ const box=$('importTextPreview');
+ if(!parsed.exercises.length){box.classList.remove('hidden');box.innerHTML='<strong>No exercises recognized yet.</strong><span>Try including each exercise with sets and reps, for example: “Leg Press — 3 × 10 at 220 lb”.</span>';return;}
+ box.classList.remove('hidden');
+ box.innerHTML=`<strong>${escapeHtml(parsed.name)}</strong><span>${parsed.exercises.length} exercises recognized</span><div class="import-preview-list">${parsed.exercises.map(e=>`<span>${escapeHtml(e.name)} · ${e.sets}×${e.reps}${e.weight?` @ ${e.weight} lb`:''}</span>`).join('')}</div>`;
+}
+function currentImportedPlan(){
+ const parsed=parseWorkoutText($('importTextInput').value);
+ renderImportPreview(parsed);
+ return parsed;
+}
+let importPreviewTimer=null;
+function scheduleImportPreview(){
+ clearTimeout(importPreviewTimer);
+ importPreviewTimer=setTimeout(()=>{
+  if($('importTextInput').value.trim()) currentImportedPlan();
+  else { $('importTextPreview').classList.add('hidden'); $('importTextPreview').innerHTML=''; }
+ },180);
+}
+async function pasteWorkoutText(){
+ const input=$('importTextInput');
+ const help=$('clipboardHelp');
+ try{
+  if(!navigator.clipboard?.readText)throw new Error('Clipboard API unavailable');
+  const text=await navigator.clipboard.readText();
+  if(!text.trim())throw new Error('Clipboard is empty');
+  input.value=text;
+  currentImportedPlan();
+  help.textContent='Clipboard pasted. Review the recognized workout below.';
+  help.classList.add('good');
+ }catch(err){
+  help.textContent='Direct clipboard access was blocked. Tap the workout text box, then choose Paste.';
+  help.classList.remove('good');
+  input.focus();
+  input.select?.();
+ }
+}
+$('importTextBtn').addEventListener('click',()=>{
+ $('importTextInput').value='';$('importTextPreview').classList.add('hidden');$('importTextPreview').innerHTML='';
+ $('clipboardHelp').textContent='If iPhone blocks clipboard access, tap the text box and choose Paste.';
+ $('clipboardHelp').classList.remove('good');
+ $('importTextDialog').showModal();
+ setTimeout(()=>$('importTextInput').focus(),50);
+});
+$('pasteImportText').addEventListener('click',pasteWorkoutText);
+$('importTextInput').addEventListener('input',scheduleImportPreview);
+$('closeImportText').addEventListener('click',()=>$('importTextDialog').close());
+$('previewImportText').addEventListener('click',currentImportedPlan);
+$('importAsWorkout').addEventListener('click',()=>{
+ const parsed=currentImportedPlan();
+ if(!parsed.exercises.length)return;
+ $('exerciseRows').innerHTML='';$('workoutName').value=parsed.name;$('routineQuickSelect').value='';
+ parsed.exercises.forEach(e=>addExercise(e.name,e.sets,e.reps,e.setData));
+ $('importTextDialog').close();switchTab('log');window.scrollTo({top:0,behavior:'smooth'});saveDraft();
+});
+$('importAsRoutine').addEventListener('click',()=>{
+ const parsed=currentImportedPlan();
+ if(!parsed.exercises.length)return;
+ let routineName=parsed.name||'Imported Routine';
+ if(routines.some(r=>r.name.toLowerCase()===routineName.toLowerCase()))routineName=`${routineName} Copy`;
+ routines.push({id:uid(),name:routineName,exercises:parsed.exercises.map(e=>({name:e.name,sets:e.sets,reps:e.reps}))});
+ saveRoutines();renderRoutines();$('importTextDialog').close();switchTab('routines');
 });
 
 function routineCard(r,isStarter=false){
@@ -376,8 +571,32 @@ document.querySelectorAll('.range').forEach(b=>b.addEventListener('click',()=>{c
 document.querySelectorAll('.viz').forEach(b=>b.addEventListener('click',()=>{currentViz=b.dataset.viz;document.querySelectorAll('.viz').forEach(x=>x.classList.toggle('active',x===b));renderProgress();}));
 function switchTab(id){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.dataset.tab===id));document.querySelectorAll('.panel').forEach(x=>x.classList.toggle('active',x.id===id))}
 document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
+function exportBackup(){
+ const payload={app:'Lift Growth',version:10,exportedAt:new Date().toISOString(),workouts,routines};
+ const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+ const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`lift-growth-backup-${today()}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+async function importBackupFile(file){
+ if(!file)return;try{const parsed=JSON.parse(await file.text());if(!Array.isArray(parsed.workouts)||!Array.isArray(parsed.routines))throw new Error('Invalid backup');
+  if(!confirm(`Restore ${parsed.workouts.length} workout(s) and ${parsed.routines.length} routine(s)? This will replace the data currently stored on this device.`))return;
+  workouts=parsed.workouts;routines=parsed.routines;saveWorkouts();saveRoutines();renderAll();alert('Backup restored successfully.');
+ }catch(err){console.error(err);alert('That file does not look like a valid Lift Growth backup.');}
+}
+$('exportBackup')?.addEventListener('click',exportBackup);
+$('importBackup')?.addEventListener('change',e=>{importBackupFile(e.target.files?.[0]);e.target.value='';});
+$('log')?.addEventListener('input',saveDraft);
+$('log')?.addEventListener('change',saveDraft);
 function renderAll(){renderDashboard();renderRoutines();renderHistory();renderExerciseSelect()}
 
-if(!routines.length){routines=starters.slice(0,2).map(s=>({id:uid(),name:s.name,exercises:s.exercises.map(e=>({name:e[0],sets:e[1],reps:e[2]}))}));saveRoutines();}
-addExercise();renderAll();window.addEventListener('resize',()=>{if($('progress').classList.contains('active'))renderProgress()});
+async function initializeApp(){
+ setStorageStatus('Checking storage…');
+ await loadPersistentData();
+ if(!routines.length){routines=starters.slice(0,2).map(s=>({id:uid(),name:s.name,exercises:s.exercises.map(e=>({name:e[0],sets:e[1],reps:e[2]}))}));await saveRoutines();}
+ if(!await restoreDraft())addExercise();
+ renderAll();
+ await requestPersistentStorage();
+ await verifyStorage();
+}
+window.addEventListener('resize',()=>{if($('progress').classList.contains('active'))renderProgress()});
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;$('installBtn').classList.remove('hidden')});$('installBtn').addEventListener('click',async()=>{if(deferredPrompt){deferredPrompt.prompt();deferredPrompt=null}});if('serviceWorker' in navigator)navigator.serviceWorker.register('service-worker.js');
+initializeApp().catch(err=>{console.error('Lift Growth initialization failed',err);setStorageStatus('Storage initialization failed',true);if(!$('exerciseRows').children.length)addExercise();renderAll();});
