@@ -46,18 +46,45 @@
       <div class="card">
         <div class="section-head">
           <div><h2>Log workout</h2><p class="muted">Track each set separately for more accurate progress data.</p></div>
-          <div class="header-actions"><button id="importTextBtn" class="text-btn">Paste &amp; parse</button><button id="clearWorkout" class="text-btn">Clear</button></div>
+          <div class="header-actions"><button id="clearWorkout" class="text-btn">Clear</button></div>
         </div>
-        <label>Routine
-          <select id="routineQuickSelect"><option value="">Blank workout</option></select>
-        </label>
-        <div class="two-col">
-          <label>Date<input type="date" id="date" /></label>
-          <label>Workout name<input type="text" id="workoutName" placeholder="Upper A" /></label>
+
+        <div class="entry-mode-tabs" role="tablist" aria-label="Workout entry method">
+          <button type="button" class="entry-mode active" data-entry-mode="manual" role="tab" aria-selected="true">Manual entry</button>
+          <button type="button" class="entry-mode" data-entry-mode="import" role="tab" aria-selected="false">Import text</button>
         </div>
-        <div id="exerciseRows"></div>
-        <button id="addExercise" class="secondary">+ Add exercise</button>
-        <button id="saveWorkout" class="primary">Save workout</button>
+
+        <div id="manualEntryPanel" class="entry-mode-panel active">
+          <label>Routine
+            <select id="routineQuickSelect"><option value="">Blank workout</option></select>
+          </label>
+          <div class="two-col">
+            <label>Date<input type="date" id="date" /></label>
+            <label>Workout name<input type="text" id="workoutName" placeholder="Upper A" /></label>
+          </div>
+          <div id="exerciseRows"></div>
+          <button id="addExercise" class="secondary">+ Add exercise</button>
+          <button id="saveWorkout" class="primary">Save workout</button>
+        </div>
+
+        <div id="importEntryPanel" class="entry-mode-panel">
+          <p class="muted import-help">Paste a workout from ChatGPT, Notes, Messages, a coach, or anywhere else. Headings and notes are ignored; the preview shows only the exercises and sets Lift Growth recognizes.</p>
+          <button type="button" id="pasteImportText" class="paste-action">Paste from clipboard</button>
+          <div id="clipboardHelp" class="clipboard-help muted">If iPhone blocks clipboard access, tap the text box and choose Paste.</div>
+          <label>Workout text
+            <textarea id="importTextInput" rows="10" placeholder="Upper Body
+• Incline Press — 3 × 8 at 70 lb
+• Lat Pulldown — 3 × 10 at 120 lb
+• Seated Row — 3 × 10
+• Bicep Curls — 3 × 12"></textarea>
+          </label>
+          <div class="import-status-row"><span class="muted">Preview updates automatically as you type.</span><button type="button" id="previewImportText" class="text-btn">Refresh preview</button></div>
+          <div id="importTextPreview" class="import-preview hidden" aria-live="polite"></div>
+          <div class="import-actions">
+            <button type="button" id="importAsWorkout" class="primary">Start workout</button>
+            <button type="button" id="importAsRoutine" class="secondary">Save as routine</button>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -140,31 +167,6 @@
       </div>
     </section>
   </main>
-
-  <dialog id="importTextDialog">
-    <form id="importTextForm" method="dialog" class="dialog-card">
-      <div class="section-head">
-        <div><div class="eyebrow">QUICK IMPORT</div><h2>Paste &amp; parse workout</h2></div>
-        <button type="button" id="closeImportText" class="text-btn">Cancel</button>
-      </div>
-      <p class="muted import-help">Paste ordinary workout text from Notes, Messages, a coach, ChatGPT, or anywhere else. Lift Growth will recognize exercise names, sets, reps, and weights, then let you review everything before starting.</p>
-      <button type="button" id="pasteImportText" class="paste-action">Paste from clipboard</button>
-      <div id="clipboardHelp" class="clipboard-help muted">If iPhone blocks clipboard access, tap the text box and choose Paste.</div>
-      <label>Workout text
-        <textarea id="importTextInput" rows="10" placeholder="Upper Body
-Bench Press — 3 × 8 at 165 lb
-Lat Pulldown — 3 × 10 at 120 lb
-Seated Row — 3 × 10
-Bicep Curls — 3 × 12"></textarea>
-      </label>
-      <div class="import-status-row"><span class="muted">Preview updates automatically as you type.</span><button type="button" id="previewImportText" class="text-btn">Refresh preview</button></div>
-      <div id="importTextPreview" class="import-preview hidden" aria-live="polite"></div>
-      <div class="import-actions">
-        <button type="button" id="importAsWorkout" class="primary">Start workout</button>
-        <button type="button" id="importAsRoutine" class="secondary">Save as routine</button>
-      </div>
-    </form>
-  </dialog>
 
   <dialog id="routineDialog">
     <form id="routineForm" method="dialog" class="dialog-card">

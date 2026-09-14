@@ -191,3 +191,7 @@ Bicep Curls — 3 x 12 at 25 lb
 ```
 
 The importer is source-agnostic: the text can come from ChatGPT, Notes, Messages, a coach, or anywhere else. Direct clipboard access depends on browser/iOS permission; when it is blocked, the app provides a normal manual paste fallback.
+
+### Manual entry and Import text tabs
+
+The Log screen now has two clean entry modes. **Manual entry** keeps the normal routine and set-by-set workflow. **Import text** accepts ordinary workout text, including ChatGPT-style headings and bullet lists. The import preview intentionally shows only recognized exercises and sets; headings and notes are ignored.

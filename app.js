@@ -357,7 +357,7 @@ function renderImportPreview(parsed){
  const box=$('importTextPreview');
  if(!parsed.exercises.length){box.classList.remove('hidden');box.innerHTML='<strong>No exercises recognized yet.</strong><span>Try including each exercise with sets and reps, for example: “Leg Press — 3 × 10 at 220 lb”.</span>';return;}
  box.classList.remove('hidden');
- box.innerHTML=`<strong>${escapeHtml(parsed.name)}</strong><span>${parsed.exercises.length} exercises recognized</span><div class="import-preview-list">${parsed.exercises.map(e=>`<span>${escapeHtml(e.name)} · ${e.sets}×${e.reps}${e.weight?` @ ${e.weight} lb`:''}</span>`).join('')}</div>`;
+ box.innerHTML=`<span>${parsed.exercises.length} exercise${parsed.exercises.length===1?'':'s'} recognized</span><div class="import-preview-list">${parsed.exercises.map(e=>`<span><strong>${escapeHtml(e.name)}</strong> · ${e.sets} × ${e.reps}${e.weight?` @ ${e.weight} lb`:''}</span>`).join('')}</div>`;
 }
 function currentImportedPlan(){
  const parsed=parseWorkoutText($('importTextInput').value);
@@ -390,23 +390,26 @@ async function pasteWorkoutText(){
   input.select?.();
  }
 }
-$('importTextBtn').addEventListener('click',()=>{
- $('importTextInput').value='';$('importTextPreview').classList.add('hidden');$('importTextPreview').innerHTML='';
- $('clipboardHelp').textContent='If iPhone blocks clipboard access, tap the text box and choose Paste.';
- $('clipboardHelp').classList.remove('good');
- $('importTextDialog').showModal();
- setTimeout(()=>$('importTextInput').focus(),50);
-});
+function setEntryMode(mode){
+ document.querySelectorAll('.entry-mode').forEach(btn=>{
+  const active=btn.dataset.entryMode===mode;
+  btn.classList.toggle('active',active);
+  btn.setAttribute('aria-selected',active?'true':'false');
+ });
+ $('manualEntryPanel').classList.toggle('active',mode==='manual');
+ $('importEntryPanel').classList.toggle('active',mode==='import');
+ if(mode==='import')setTimeout(()=>$('importTextInput').focus(),30);
+}
+document.querySelectorAll('.entry-mode').forEach(btn=>btn.addEventListener('click',()=>setEntryMode(btn.dataset.entryMode)));
 $('pasteImportText').addEventListener('click',pasteWorkoutText);
 $('importTextInput').addEventListener('input',scheduleImportPreview);
-$('closeImportText').addEventListener('click',()=>$('importTextDialog').close());
 $('previewImportText').addEventListener('click',currentImportedPlan);
 $('importAsWorkout').addEventListener('click',()=>{
  const parsed=currentImportedPlan();
  if(!parsed.exercises.length)return;
  $('exerciseRows').innerHTML='';$('workoutName').value=parsed.name;$('routineQuickSelect').value='';
  parsed.exercises.forEach(e=>addExercise(e.name,e.sets,e.reps,e.setData));
- $('importTextDialog').close();switchTab('log');window.scrollTo({top:0,behavior:'smooth'});saveDraft();
+ setEntryMode('manual');switchTab('log');window.scrollTo({top:0,behavior:'smooth'});saveDraft();
 });
 $('importAsRoutine').addEventListener('click',()=>{
  const parsed=currentImportedPlan();
@@ -414,7 +417,8 @@ $('importAsRoutine').addEventListener('click',()=>{
  let routineName=parsed.name||'Imported Routine';
  if(routines.some(r=>r.name.toLowerCase()===routineName.toLowerCase()))routineName=`${routineName} Copy`;
  routines.push({id:uid(),name:routineName,exercises:parsed.exercises.map(e=>({name:e.name,sets:e.sets,reps:e.reps}))});
- saveRoutines();renderRoutines();$('importTextDialog').close();switchTab('routines');
+ saveRoutines();renderRoutines();
+ setEntryMode('manual');switchTab('routines');
 });
 
 function routineCard(r,isStarter=false){

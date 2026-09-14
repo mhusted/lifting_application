@@ -53,3 +53,13 @@ textarea{width:100%;margin-top:6px;background:#0d1626;border:1px solid var(--bor
 
 /* v12 quick text import */
 .paste-action{width:100%;border:1px solid var(--accent);background:rgba(56,189,248,.08);color:var(--accent);border-radius:12px;padding:12px 14px;font-weight:800;margin:4px 0 2px}.clipboard-help{margin:4px 0 10px;line-height:1.35}.clipboard-help.good{color:var(--good)}.import-status-row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:4px}.import-status-row .text-btn{min-height:36px}textarea#importTextInput{width:100%;margin-top:6px;background:#0d1626;border:1px solid var(--border);border-radius:12px;padding:12px;color:var(--text);font:inherit;font-size:16px;resize:vertical;min-height:180px}
+
+/* v13: cleaner log-entry modes */
+.entry-mode-tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:14px 0 10px;padding:4px;background:#0d1626;border:1px solid var(--border);border-radius:14px}
+.entry-mode{border:0;background:transparent;color:var(--muted);border-radius:10px;padding:10px 12px;font-weight:800}
+.entry-mode.active{background:var(--accent);color:#07101f}
+.entry-mode-panel{display:none}
+.entry-mode-panel.active{display:block}
+#importEntryPanel{padding-top:2px}
+#importEntryPanel .import-preview-list span{display:block;padding:8px 0;border-bottom:1px solid rgba(148,163,184,.1)}
+#importEntryPanel .import-preview-list span:last-child{border-bottom:0}
