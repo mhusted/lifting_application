@@ -69,3 +69,5 @@ textarea{width:100%;margin-top:6px;background:#0d1626;border:1px solid var(--bor
 .import-action-message{margin-top:12px;padding:10px 12px;border-radius:10px;border:1px solid var(--border,#2b3a52);font-size:.9rem}
 .import-action-message.good{color:#86efac;background:rgba(34,197,94,.08);border-color:rgba(34,197,94,.28)}
 .import-action-message.bad{color:#fca5a5;background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.28)}
+
+.app-version{font-size:.72rem;opacity:.55;margin-top:-.35rem;letter-spacing:.08em}

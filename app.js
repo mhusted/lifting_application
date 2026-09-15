@@ -340,6 +340,22 @@ function parseWorkoutLine(raw){
  const setData=Array.from({length:sets},()=>({weight:weight||'',reps,rir:''}));
  return {name,sets,reps,weight:weight||null,setData};
 }
+function parseImportedDate(text){
+ const lines=String(text||'').split(/\r?\n/).map(cleanImportLine).filter(Boolean);
+ for(const line of lines.slice(0,8)){
+  // ISO or US numeric dates.
+  let m=line.match(/\b(20\d{2})-(\d{1,2})-(\d{1,2})\b/);
+  if(m)return `${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
+  m=line.match(/\b(\d{1,2})[\/-](\d{1,2})[\/-](20\d{2})\b/);
+  if(m)return `${m[3]}-${String(m[1]).padStart(2,'0')}-${String(m[2]).padStart(2,'0')}`;
+  // Month-name dates such as September 12, 2026.
+  if(/\b20\d{2}\b/.test(line) && /(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(line)){
+   const d=new Date(line.replace(/^(date\s*[:\-]\s*)/i,''));
+   if(!Number.isNaN(d.getTime()))return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+ }
+ return '';
+}
 function parseWorkoutText(text){
  const lines=String(text||'').split(/\r?\n/).map(cleanImportLine).filter(Boolean);
  const exercises=[];
@@ -361,15 +377,19 @@ function parseWorkoutText(text){
  };
 
  const parseSingleSet=(line)=>{
-  // Supports lines such as:
-  // 110 x 10 @ RIR 2
-  // 110 lb × 10 RIR 2
-  // 110 x 10
-  // 10 reps @ 110 lb
-  let m=line.match(/^\s*(\d+(?:\.\d+)?)\s*(?:lb|lbs|pounds?|kg|kgs)?\s*(?:x|×)\s*(\d+)(?:\s*(?:reps?))?(?:\s*(?:@)?\s*RIR\s*[:=]?\s*(\d+(?:\.\d+)?))?\s*$/i);
-  if(m)return {weight:+m[1],reps:+m[2],rir:m[3]==null?'':+m[3]};
-  m=line.match(/^\s*(\d+)\s*(?:reps?)\s*(?:@|at)\s*(\d+(?:\.\d+)?)\s*(?:lb|lbs|pounds?|kg|kgs)?(?:\s*(?:@)?\s*RIR\s*[:=]?\s*(\d+(?:\.\d+)?))?\s*$/i);
-  if(m)return {weight:+m[2],reps:+m[1],rir:m[3]==null?'':+m[3]};
+  const s=String(line||'')
+    .replace(/[×✕✖]/g,'x')
+    .replace(/\u00a0/g,' ')
+    .trim();
+
+  // weight x reps, optionally followed by RIR.
+  let m=s.match(/^(\d+(?:\.\d+)?)\s*(?:lb|lbs|pounds?|kg|kgs)?\s*[xX]\s*(\d+)(?:\s*reps?)?(?:\s*(?:@|,|-)?\s*RIR\s*[:=]?\s*(\d+(?:\.\d+)?))?$/i);
+  if(m) return {weight:+m[1], reps:+m[2], rir:m[3]==null?'':+m[3]};
+
+  // reps @/at weight, optionally followed by RIR.
+  m=s.match(/^(\d+)\s*reps?\s*(?:@|at)\s*(\d+(?:\.\d+)?)\s*(?:lb|lbs|pounds?|kg|kgs)?(?:\s*(?:@|,|-)?\s*RIR\s*[:=]?\s*(\d+(?:\.\d+)?))?$/i);
+  if(m) return {weight:+m[2], reps:+m[1], rir:m[3]==null?'':+m[3]};
+
   return null;
  };
 
@@ -430,13 +450,15 @@ function parseWorkoutText(text){
   }else merged.push(ex);
  }
 
- return {name:workoutName,exercises:merged};
+ return {name:workoutName,date:parseImportedDate(text),exercises:merged};
 }
 function renderImportPreview(parsed){
  const box=$('importTextPreview');
- if(!parsed.exercises.length){box.classList.remove('hidden');box.innerHTML='<strong>No exercises recognized yet.</strong><span>Try including each exercise with sets and reps, for example: “Leg Press — 3 × 10 at 220 lb”.</span>';return;}
+ if(!parsed.exercises.length){box.classList.remove('hidden');box.innerHTML='<strong>No exercises recognized yet.</strong><span>Use an exercise heading followed by completed sets, for example: “Seated Row” then “170 x 10 @ RIR 2”.</span>';return;}
  box.classList.remove('hidden');
- box.innerHTML=`<span>${parsed.exercises.length} exercise${parsed.exercises.length===1?'':'s'} recognized</span><div class="import-preview-list">${parsed.exercises.map(e=>`<span><strong>${escapeHtml(e.name)}</strong> · ${e.sets} × ${e.reps}${e.weight?` @ ${e.weight} lb`:''}</span>`).join('')}</div>`;
+ box.innerHTML=`<strong>${parsed.exercises.length} exercise${parsed.exercises.length===1?'':'s'} recognized</strong><div class="import-preview-list">${parsed.exercises.map(e=>`<div><strong>${escapeHtml(e.name)}</strong>${(e.setData||[]).map((set,i)=>`<span>Set ${i+1}: ${set.weight||'—'} × ${set.reps||'—'}${set.rir!==''&&set.rir!=null?` · RIR ${set.rir}`:''}</span>`).join('')}</div>`).join('')}</div>`;
+ if(parsed.date && !$('importWorkoutDate').dataset.edited)$('importWorkoutDate').value=parsed.date;
+ if(parsed.name && parsed.name!=='Imported Workout' && !$('importWorkoutName').dataset.edited)$('importWorkoutName').value=parsed.name;
 }
 function currentImportedPlan(){
  const parsed=parseWorkoutText($('importTextInput').value);
@@ -482,6 +504,9 @@ function setEntryMode(mode){
 document.querySelectorAll('.entry-mode').forEach(btn=>btn.addEventListener('click',()=>setEntryMode(btn.dataset.entryMode)));
 $('pasteImportText').addEventListener('click',pasteWorkoutText);
 $('importTextInput').addEventListener('input',scheduleImportPreview);
+$('importWorkoutDate').value=today();
+$('importWorkoutDate').addEventListener('input',e=>e.target.dataset.edited='1');
+$('importWorkoutName').addEventListener('input',e=>e.target.dataset.edited='1');
 $('previewImportText').addEventListener('click',currentImportedPlan);
 function hasMeaningfulManualEntry(){
  return [...document.querySelectorAll('#exerciseRows .exercise-card')].some(card=>{
@@ -494,39 +519,34 @@ function showImportMessage(message,isError=false){
  const el=$('importActionMessage');if(!el)return;
  el.textContent=message;el.classList.remove('hidden','good','bad');el.classList.add(isError?'bad':'good');
 }
-$('importAsWorkout').addEventListener('click',()=>{
+$('importAsWorkout').addEventListener('click',async()=>{
  try{
   const parsed=currentImportedPlan();
-  if(!parsed.exercises.length){showImportMessage('Nothing was imported. Add sets and reps to at least one exercise, then try again.',true);return;}
-  if(hasMeaningfulManualEntry()&&!confirm('Start this imported workout? Your current manual entry will be replaced.'))return;
-
-  // Build the entire imported workout off-screen first. The current workout is not
-  // touched unless every exercise can be created successfully.
-  const fragment=document.createDocumentFragment();
-  parsed.exercises.forEach(e=>{
-   if(!e?.name||!Number.isFinite(+e.sets)||+e.sets<1||!Number.isFinite(+e.reps)||+e.reps<1)throw new Error('Invalid imported exercise');
-   addExercise(e.name,e.sets,e.reps,e.setData,fragment);
-  });
-  if(!fragment.childNodes.length)throw new Error('No valid exercises were created');
-
-  $('exerciseRows').replaceChildren(fragment);
-  $('workoutName').value=parsed.name==='Imported Workout'?'':parsed.name;
-  $('routineQuickSelect').value='';
-  showImportMessage('Workout imported successfully.');
-  setEntryMode('manual');switchTab('log');window.scrollTo({top:0,behavior:'smooth'});saveDraft();
+  if(!parsed.exercises.length){showImportMessage('No completed exercises were recognized. Your history was not changed.',true);return;}
+  const date=$('importWorkoutDate').value||parsed.date||today();
+  const name=$('importWorkoutName').value.trim()||parsed.name||'Imported Workout';
+  const exercises=parsed.exercises.map(e=>({
+   name:canonicalExerciseName(e.name),
+   sets:(e.setData||[]).map(set=>({weight:+set.weight||0,reps:+set.reps||0,rir:set.rir===''||set.rir==null?null:+set.rir})).filter(set=>set.weight>0&&set.reps>0)
+  })).filter(e=>e.name&&e.sets.length);
+  if(!exercises.length){showImportMessage('No completed weighted sets were recognized. Your history was not changed.',true);return;}
+  const workout={id:uid(),date,name,exercises};
+  workouts.push(workout);
+  workouts.sort((a,b)=>a.date.localeCompare(b.date));
+  const saved=await saveWorkouts();
+  if(!saved){workouts=workouts.filter(w=>w.id!==workout.id);showImportMessage('The workout was parsed, but could not be saved on this device. Your history was not changed.',true);return;}
+  renderAll();
+  $('importTextInput').value='';
+  $('importTextPreview').classList.add('hidden');
+  $('importWorkoutName').value='';
+  $('importWorkoutName').dataset.edited='';
+  $('importWorkoutDate').value=today();
+  $('importWorkoutDate').dataset.edited='';
+  showImportMessage(`Imported ${name} on ${date} into workout history.`);
  }catch(err){
-  console.error('Workout text import failed',err);
-  showImportMessage(`Import could not be started${err?.message?`: ${err.message}`:''}. Your existing workout is unchanged.`,true);
+  console.error('Historical workout import failed',err);
+  showImportMessage(`Import failed${err?.message?`: ${err.message}`:''}. Your workout history was left unchanged.`,true);
  }
-});
-$('importAsRoutine').addEventListener('click',()=>{
- const parsed=currentImportedPlan();
- if(!parsed.exercises.length)return;
- let routineName=parsed.name||'Imported Routine';
- if(routines.some(r=>r.name.toLowerCase()===routineName.toLowerCase()))routineName=`${routineName} Copy`;
- routines.push({id:uid(),name:routineName,exercises:parsed.exercises.map(e=>({name:e.name,sets:e.sets,reps:e.reps}))});
- saveRoutines();renderRoutines();
- setEntryMode('manual');switchTab('routines');
 });
 
 function routineCard(r,isStarter=false){

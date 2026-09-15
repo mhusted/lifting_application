@@ -203,3 +203,10 @@ Text imports are now transactional. Lift Growth builds the imported workout off-
 
 ### v15 import fix
 Text import now understands exercise blocks with one set per line, including formats like `110 x 10 @ RIR 2`, while preserving the current workout if an import cannot be completed.
+
+
+### v17 deployment verification
+The header displays `v17`, and JS/CSS URLs are cache-busted so a GitHub Pages update can be verified immediately.
+
+### v17 historical text import
+Import Text is now for completed workouts. It detects a date/name when present, previews individual completed sets, lets you correct date/name, and writes the workout directly into the same history used by manual logging, PRs, volume, and progress charts.

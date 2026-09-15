@@ -9,14 +9,14 @@
   <meta name="apple-mobile-web-app-title" content="Lift Growth" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=17" />
   <title>Lift Growth</title>
 </head>
 <body>
   <header class="topbar">
     <div>
       <div class="eyebrow">WEEKLY STRENGTH TRACKER</div>
-      <h1>Lift Growth</h1>
+      <h1>Lift Growth</h1><div class="app-version">v17</div>
     </div>
     <button id="installBtn" class="ghost hidden">Install</button>
   </header>
@@ -68,21 +68,26 @@
         </div>
 
         <div id="importEntryPanel" class="entry-mode-panel">
-          <p class="muted import-help">Paste a workout from ChatGPT, Notes, Messages, a coach, or anywhere else. Headings and notes are ignored; the preview shows only the exercises and sets Lift Growth recognizes.</p>
+          <p class="muted import-help">Paste a workout you have already completed. Lift Growth will recognize the workout date, name, exercises, sets, reps, weight, and RIR, then add it directly to your history.</p>
           <button type="button" id="pasteImportText" class="paste-action">Paste from clipboard</button>
           <div id="clipboardHelp" class="clipboard-help muted">If iPhone blocks clipboard access, tap the text box and choose Paste.</div>
           <label>Workout text
             <textarea id="importTextInput" rows="10" placeholder="Upper Body
-• Incline Press — 3 × 8 at 70 lb
-• Lat Pulldown — 3 × 10 at 120 lb
-• Seated Row — 3 × 10
-• Bicep Curls — 3 × 12"></textarea>
+September 12, 2026
+
+Incline Press
+135 x 8 @ RIR 2
+135 x 8 @ RIR 2
+135 x 7 @ RIR 1"></textarea>
           </label>
           <div class="import-status-row"><span class="muted">Preview updates automatically as you type.</span><button type="button" id="previewImportText" class="text-btn">Refresh preview</button></div>
           <div id="importTextPreview" class="import-preview hidden" aria-live="polite"></div>
+          <div class="two-col import-meta">
+            <label>Workout date<input type="date" id="importWorkoutDate" /></label>
+            <label>Workout name<input type="text" id="importWorkoutName" placeholder="Upper Body" /></label>
+          </div>
           <div class="import-actions">
-            <button type="button" id="importAsWorkout" class="primary">Start workout</button>
-            <button type="button" id="importAsRoutine" class="secondary">Save as routine</button>
+            <button type="button" id="importAsWorkout" class="primary">Import workout</button>
           </div>
           <div id="importActionMessage" class="import-action-message hidden" role="status" aria-live="polite"></div>
         </div>
@@ -231,6 +236,6 @@
   </template>
 
 
-  <script src="app.js"></script>
+  <script src="app.js?v=17"></script>
 </body>
 </html>
