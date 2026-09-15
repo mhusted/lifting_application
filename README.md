@@ -210,3 +210,7 @@ The header displays `v17`, and JS/CSS URLs are cache-busted so a GitHub Pages up
 
 ### v17 historical text import
 Import Text is now for completed workouts. It detects a date/name when present, previews individual completed sets, lets you correct date/name, and writes the workout directly into the same history used by manual logging, PRs, volume, and progress charts.
+
+
+### v18 import fix
+Fixed an infinite recursion in exercise-name canonicalization that could cause `Maximum call stack size exceeded` when importing a historical workout. Historical imports are now validated and persisted transactionally.

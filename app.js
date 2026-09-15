@@ -141,16 +141,21 @@ function fmt(n){return Math.round(n).toLocaleString()}
 function fmtDate(s){const [y,m,d]=s.split('-').map(Number);return new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric',year:'numeric'}).format(new Date(y,m-1,d))}
 function startOfWeek(d){const x=new Date(d+'T12:00:00');const day=(x.getDay()+6)%7;x.setDate(x.getDate()-day);x.setHours(0,0,0,0);return x}
 
-function exerciseCatalog(){
- const prior=workouts.flatMap(w=>normalizedWorkout(w).exercises.map(e=>e.name)).filter(Boolean);
- return [...new Set([...EXERCISE_LIBRARY,...prior])].sort((a,b)=>a.localeCompare(b));
-}
 function canonicalExerciseName(value){
  const clean=String(value||'').trim(); if(!clean)return '';
  const alias=EXERCISE_ALIASES[clean.toLowerCase()];
  if(alias)return alias;
- const exact=exerciseCatalog().find(n=>n.toLowerCase()===clean.toLowerCase());
+ // IMPORTANT: canonicalization must not call exerciseCatalog(), because the
+ // catalog includes saved workouts and normalizing those workouts calls this
+ // function again. That created an infinite recursion after the first import.
+ const exact=EXERCISE_LIBRARY.find(n=>n.toLowerCase()===clean.toLowerCase());
  return exact||clean;
+}
+function exerciseCatalog(){
+ // Read saved exercise names directly; do not normalize them while building
+ // the catalog. This keeps catalog construction non-recursive.
+ const prior=workouts.flatMap(w=>(w.exercises||[]).map(e=>canonicalExerciseName(e?.name||''))).filter(Boolean);
+ return [...new Set([...EXERCISE_LIBRARY,...prior])].sort((a,b)=>a.localeCompare(b));
 }
 function latestExercisePerformance(name){
  const key=String(name||'').trim().toLowerCase(); if(!key)return null;
@@ -520,6 +525,8 @@ function showImportMessage(message,isError=false){
  el.textContent=message;el.classList.remove('hidden','good','bad');el.classList.add(isError?'bad':'good');
 }
 $('importAsWorkout').addEventListener('click',async()=>{
+ let workout=null;
+ let committed=false;
  try{
   const parsed=currentImportedPlan();
   if(!parsed.exercises.length){showImportMessage('No completed exercises were recognized. Your history was not changed.',true);return;}
@@ -527,14 +534,31 @@ $('importAsWorkout').addEventListener('click',async()=>{
   const name=$('importWorkoutName').value.trim()||parsed.name||'Imported Workout';
   const exercises=parsed.exercises.map(e=>({
    name:canonicalExerciseName(e.name),
-   sets:(e.setData||[]).map(set=>({weight:+set.weight||0,reps:+set.reps||0,rir:set.rir===''||set.rir==null?null:+set.rir})).filter(set=>set.weight>0&&set.reps>0)
+   sets:(e.setData||[]).map(set=>({
+    weight:+set.weight||0,
+    reps:+set.reps||0,
+    rir:set.rir===''||set.rir==null?null:+set.rir
+   })).filter(set=>set.weight>0&&set.reps>0)
   })).filter(e=>e.name&&e.sets.length);
   if(!exercises.length){showImportMessage('No completed weighted sets were recognized. Your history was not changed.',true);return;}
-  const workout={id:uid(),date,name,exercises};
-  workouts.push(workout);
-  workouts.sort((a,b)=>a.date.localeCompare(b.date));
+
+  workout={id:uid(),date,name,exercises};
+  const nextWorkouts=[...workouts,workout].sort((a,b)=>a.date.localeCompare(b.date));
+
+  // Validate the complete workout before changing the in-memory history.
+  nextWorkouts.forEach(w=>normalizedWorkout(w));
+  const previousWorkouts=workouts;
+  workouts=nextWorkouts;
+
   const saved=await saveWorkouts();
-  if(!saved){workouts=workouts.filter(w=>w.id!==workout.id);showImportMessage('The workout was parsed, but could not be saved on this device. Your history was not changed.',true);return;}
+  if(!saved){
+   workouts=previousWorkouts;
+   showImportMessage('The workout was parsed, but could not be saved on this device. Your history was not changed.',true);
+   return;
+  }
+  committed=true;
+
+  // Render only after persistence succeeds.
   renderAll();
   $('importTextInput').value='';
   $('importTextPreview').classList.add('hidden');
@@ -545,6 +569,10 @@ $('importAsWorkout').addEventListener('click',async()=>{
   showImportMessage(`Imported ${name} on ${date} into workout history.`);
  }catch(err){
   console.error('Historical workout import failed',err);
+  if(workout && committed){
+   workouts=workouts.filter(w=>w.id!==workout.id);
+   try{await saveWorkouts()}catch(rollbackErr){console.error('Import rollback failed',rollbackErr)}
+  }
   showImportMessage(`Import failed${err?.message?`: ${err.message}`:''}. Your workout history was left unchanged.`,true);
  }
 });
