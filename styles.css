@@ -63,3 +63,9 @@ textarea{width:100%;margin-top:6px;background:#0d1626;border:1px solid var(--bor
 #importEntryPanel{padding-top:2px}
 #importEntryPanel .import-preview-list span{display:block;padding:8px 0;border-bottom:1px solid rgba(148,163,184,.1)}
 #importEntryPanel .import-preview-list span:last-child{border-bottom:0}
+
+
+/* v14 import safety feedback */
+.import-action-message{margin-top:12px;padding:10px 12px;border-radius:10px;border:1px solid var(--border,#2b3a52);font-size:.9rem}
+.import-action-message.good{color:#86efac;background:rgba(34,197,94,.08);border-color:rgba(34,197,94,.28)}
+.import-action-message.bad{color:#fca5a5;background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.28)}

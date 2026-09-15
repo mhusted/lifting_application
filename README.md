@@ -195,3 +195,7 @@ The importer is source-agnostic: the text can come from ChatGPT, Notes, Messages
 ### Manual entry and Import text tabs
 
 The Log screen now has two clean entry modes. **Manual entry** keeps the normal routine and set-by-set workflow. **Import text** accepts ordinary workout text, including ChatGPT-style headings and bullet lists. The import preview intentionally shows only recognized exercises and sets; headings and notes are ignored.
+
+
+### v14 import safety
+Text imports are now transactional. Lift Growth builds the imported workout off-screen and only replaces the manual-entry form after the full import succeeds. Failed imports leave the current workout untouched. The service worker also uses fresh network files when online to reduce version-mismatch issues after GitHub Pages deployments.

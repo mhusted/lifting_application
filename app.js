@@ -222,7 +222,7 @@ function addSet(exerciseNode, values={}){
  renumberSets(exerciseNode);
  return node;
 }
-function addExercise(name='',setCount=3,targetReps='',prefillSets=null){
+function addExercise(name='',setCount=3,targetReps='',prefillSets=null,target=null){
  const node=$('exerciseTemplate').content.firstElementChild.cloneNode(true);
  const nameInput=node.querySelector('.exercise-name');
  nameInput.value=canonicalExerciseName(name);
@@ -240,8 +240,9 @@ function addExercise(name='',setCount=3,targetReps='',prefillSets=null){
   all.slice(1).forEach(r=>{r.querySelector('.set-weight').value=first.weight;r.querySelector('.set-reps').value=first.reps;r.querySelector('.set-rir').value=first.rir;});
  });
  node.querySelector('.remove-exercise').addEventListener('click',()=>node.remove());
- $('exerciseRows').appendChild(node);
+ (target||$('exerciseRows')).appendChild(node);
  renderPreviousPerformance(node);
+ return node;
 }
 function clearWorkout(){
  $('workoutName').value='';$('routineQuickSelect').value='';$('exerciseRows').innerHTML='';addExercise();deleteDraft();
@@ -404,12 +405,41 @@ document.querySelectorAll('.entry-mode').forEach(btn=>btn.addEventListener('clic
 $('pasteImportText').addEventListener('click',pasteWorkoutText);
 $('importTextInput').addEventListener('input',scheduleImportPreview);
 $('previewImportText').addEventListener('click',currentImportedPlan);
+function hasMeaningfulManualEntry(){
+ return [...document.querySelectorAll('#exerciseRows .exercise-card')].some(card=>{
+  const name=card.querySelector('.exercise-name')?.value?.trim();
+  const values=[...card.querySelectorAll('.set-entry input')].some(input=>String(input.value||'').trim());
+  return !!name||values;
+ }) || !!$('workoutName').value.trim();
+}
+function showImportMessage(message,isError=false){
+ const el=$('importActionMessage');if(!el)return;
+ el.textContent=message;el.classList.remove('hidden','good','bad');el.classList.add(isError?'bad':'good');
+}
 $('importAsWorkout').addEventListener('click',()=>{
- const parsed=currentImportedPlan();
- if(!parsed.exercises.length)return;
- $('exerciseRows').innerHTML='';$('workoutName').value=parsed.name;$('routineQuickSelect').value='';
- parsed.exercises.forEach(e=>addExercise(e.name,e.sets,e.reps,e.setData));
- setEntryMode('manual');switchTab('log');window.scrollTo({top:0,behavior:'smooth'});saveDraft();
+ try{
+  const parsed=currentImportedPlan();
+  if(!parsed.exercises.length){showImportMessage('Nothing was imported. Add sets and reps to at least one exercise, then try again.',true);return;}
+  if(hasMeaningfulManualEntry()&&!confirm('Start this imported workout? Your current manual entry will be replaced.'))return;
+
+  // Build the entire imported workout off-screen first. The current workout is not
+  // touched unless every exercise can be created successfully.
+  const fragment=document.createDocumentFragment();
+  parsed.exercises.forEach(e=>{
+   if(!e?.name||!Number.isFinite(+e.sets)||+e.sets<1||!Number.isFinite(+e.reps)||+e.reps<1)throw new Error('Invalid imported exercise');
+   addExercise(e.name,e.sets,e.reps,e.setData,fragment);
+  });
+  if(!fragment.childNodes.length)throw new Error('No valid exercises were created');
+
+  $('exerciseRows').replaceChildren(fragment);
+  $('workoutName').value=parsed.name==='Imported Workout'?'':parsed.name;
+  $('routineQuickSelect').value='';
+  showImportMessage('Workout imported successfully.');
+  setEntryMode('manual');switchTab('log');window.scrollTo({top:0,behavior:'smooth'});saveDraft();
+ }catch(err){
+  console.error('Workout text import failed',err);
+  showImportMessage('Import failed, so your existing workout was left unchanged. Please adjust the text and try again.',true);
+ }
 });
 $('importAsRoutine').addEventListener('click',()=>{
  const parsed=currentImportedPlan();
