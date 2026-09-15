@@ -343,16 +343,94 @@ function parseWorkoutLine(raw){
 function parseWorkoutText(text){
  const lines=String(text||'').split(/\r?\n/).map(cleanImportLine).filter(Boolean);
  const exercises=[];
- let name='Imported Workout';
+ let workoutName='Imported Workout';
+ let pendingHeading='';
+ let current=null;
+
+ const flushCurrent=()=>{
+  if(!current||!current.name||!current.setData.length)return;
+  const first=current.setData[0]||{};
+  exercises.push({
+   name:canonicalExerciseName(current.name),
+   sets:current.setData.length,
+   reps:first.reps||'',
+   weight:first.weight||null,
+   setData:current.setData
+  });
+  current=null;
+ };
+
+ const parseSingleSet=(line)=>{
+  // Supports lines such as:
+  // 110 x 10 @ RIR 2
+  // 110 lb × 10 RIR 2
+  // 110 x 10
+  // 10 reps @ 110 lb
+  let m=line.match(/^\s*(\d+(?:\.\d+)?)\s*(?:lb|lbs|pounds?|kg|kgs)?\s*(?:x|×)\s*(\d+)(?:\s*(?:reps?))?(?:\s*(?:@)?\s*RIR\s*[:=]?\s*(\d+(?:\.\d+)?))?\s*$/i);
+  if(m)return {weight:+m[1],reps:+m[2],rir:m[3]==null?'':+m[3]};
+  m=line.match(/^\s*(\d+)\s*(?:reps?)\s*(?:@|at)\s*(\d+(?:\.\d+)?)\s*(?:lb|lbs|pounds?|kg|kgs)?(?:\s*(?:@)?\s*RIR\s*[:=]?\s*(\d+(?:\.\d+)?))?\s*$/i);
+  if(m)return {weight:+m[2],reps:+m[1],rir:m[3]==null?'':+m[3]};
+  return null;
+ };
+
  for(const line of lines){
+  const singleSet=parseSingleSet(line);
+  if(singleSet){
+   if(!current && pendingHeading){
+    current={name:pendingHeading,setData:[]};
+    pendingHeading='';
+   }
+   if(current)current.setData.push(singleSet);
+   continue;
+  }
+
+  // Compact one-line formats such as "Bench Press 3x8 @ 165".
   const parsed=parseWorkoutLine(line);
-  if(parsed){exercises.push(parsed);continue;}
-  if(name==='Imported Workout' && line.length<=60 && !/[.!?]$/.test(line)){
-   const cleaned=line.replace(/^(workout|routine|plan)\s*[:\-–—]?\s*/i,'').replace(/[:\-–—]+$/,'').trim();
-   if(cleaned && !/^(notes?|warm[- ]?up|cool[- ]?down)$/i.test(cleaned))name=cleaned;
+  if(parsed){
+   flushCurrent();
+   exercises.push(parsed);
+   pendingHeading='';
+   continue;
+  }
+
+  // A standalone exercise name followed by one line per set.
+  const known=findExerciseInText(line);
+  const hasDigits=/\d/.test(line);
+  if(!hasDigits){
+   if(current)flushCurrent();
+
+   if(known){
+    pendingHeading=known;
+    continue;
+   }
+
+   // Keep only the most recent plausible heading. This lets headings such as
+   // "Upper Body" be superseded by "Incline Press" before set lines begin.
+   const candidate=line
+    .replace(/[*_`]/g,'')
+    .replace(/[:\-–—]+$/,'')
+    .trim();
+   if(candidate && candidate.length<=55 && !/^(notes?|warm[- ]?up|cool[- ]?down|sets?|reps?)$/i.test(candidate)){
+    pendingHeading=canonicalExerciseName(titleCaseExercise(candidate));
+    if(workoutName==='Imported Workout' && !known)workoutName=candidate;
+   }
   }
  }
- return {name,exercises};
+ flushCurrent();
+
+ // Merge adjacent blocks with the same exercise name, preserving each set.
+ const merged=[];
+ for(const ex of exercises){
+  const prior=merged.at(-1);
+  if(prior && prior.name.toLowerCase()===ex.name.toLowerCase()){
+   prior.setData=[...(prior.setData||[]),...(ex.setData||[])];
+   prior.sets=prior.setData.length;
+   prior.reps=prior.setData[0]?.reps||prior.reps;
+   prior.weight=prior.setData[0]?.weight||prior.weight;
+  }else merged.push(ex);
+ }
+
+ return {name:workoutName,exercises:merged};
 }
 function renderImportPreview(parsed){
  const box=$('importTextPreview');
@@ -438,7 +516,7 @@ $('importAsWorkout').addEventListener('click',()=>{
   setEntryMode('manual');switchTab('log');window.scrollTo({top:0,behavior:'smooth'});saveDraft();
  }catch(err){
   console.error('Workout text import failed',err);
-  showImportMessage('Import failed, so your existing workout was left unchanged. Please adjust the text and try again.',true);
+  showImportMessage(`Import could not be started${err?.message?`: ${err.message}`:''}. Your existing workout is unchanged.`,true);
  }
 });
 $('importAsRoutine').addEventListener('click',()=>{

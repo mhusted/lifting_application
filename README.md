@@ -199,3 +199,7 @@ The Log screen now has two clean entry modes. **Manual entry** keeps the normal 
 
 ### v14 import safety
 Text imports are now transactional. Lift Growth builds the imported workout off-screen and only replaces the manual-entry form after the full import succeeds. Failed imports leave the current workout untouched. The service worker also uses fresh network files when online to reduce version-mismatch issues after GitHub Pages deployments.
+
+
+### v15 import fix
+Text import now understands exercise blocks with one set per line, including formats like `110 x 10 @ RIR 2`, while preserving the current workout if an import cannot be completed.
