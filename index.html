@@ -9,14 +9,14 @@
   <meta name="apple-mobile-web-app-title" content="Lift Growth" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=18" />
+  <link rel="stylesheet" href="styles.css?v=19" />
   <title>Lift Growth</title>
 </head>
 <body>
   <header class="topbar">
     <div>
       <div class="eyebrow">WEEKLY STRENGTH TRACKER</div>
-      <h1>Lift Growth</h1><div class="app-version">v18</div>
+      <h1>Lift Growth</h1><div class="app-version">v19</div>
     </div>
     <button id="installBtn" class="ghost hidden">Install</button>
   </header>
@@ -96,8 +96,32 @@ Incline Press
 
     <section id="routines" class="panel">
       <div class="card">
-        <div class="section-head"><div><h2>My routines</h2><p class="muted">Reusable workouts you can start with one tap.</p></div><button id="newRoutine" class="secondary compact">+ New</button></div>
-        <div id="routineList" class="routine-grid"></div>
+        <div class="section-head"><div><h2>My routines</h2><p class="muted">Build a routine manually or paste a plan from ChatGPT, Notes, a coach, or anywhere else.</p></div></div>
+        <div class="entry-mode-tabs" role="tablist" aria-label="Routine creation method">
+          <button type="button" class="routine-entry-mode active" data-routine-mode="manual">Create manually</button>
+          <button type="button" class="routine-entry-mode" data-routine-mode="import">Import text</button>
+        </div>
+        <div id="routineManualPanel" class="entry-mode-panel active">
+          <button id="newRoutine" class="secondary">+ New routine</button>
+          <div id="routineList" class="routine-grid"></div>
+        </div>
+        <div id="routineImportPanel" class="entry-mode-panel">
+          <p class="muted import-help">Paste a workout plan. This creates a reusable routine only—it does not add anything to workout history.</p>
+          <button type="button" id="pasteRoutineText" class="paste-action">Paste from clipboard</button>
+          <label>Routine text
+            <textarea id="routineImportText" rows="10" placeholder="Upper Body A
+
+Incline Press — 3 × 8-10
+Lat Pulldown — 3 × 10
+Seated Row — 3 × 10"></textarea>
+          </label>
+          <div class="two-col">
+            <label>Routine name<input id="routineImportName" type="text" placeholder="Upper Body A" /></label>
+          </div>
+          <div id="routineImportPreview" class="import-preview hidden"></div>
+          <div id="routineImportMessage" class="import-action-message hidden" role="status"></div>
+          <button type="button" id="saveImportedRoutine" class="primary">Save routine</button>
+        </div>
       </div>
       <div class="card">
         <h2>Starter templates</h2>
@@ -164,7 +188,14 @@ Incline Press
         <div id="historyList" class="stack"></div>
       </div>
       <div class="card">
-        <div class="section-head"><div><h2>Data & backup</h2><p class="muted">Workouts and routines are stored in durable on-device storage. The status at right is verified each time the app opens.</p></div><span id="storageStatus" class="storage-status">Saved locally</span></div>
+        <div class="section-head"><div><h2>Data, privacy & backup</h2><p class="muted">This version has no shared workout database and no user accounts. Workout history and routines are stored only in this browser/device.</p></div><span id="storageStatus" class="storage-status">Saved locally</span></div>
+        <div class="privacy-grid">
+          <div><small>Storage</small><strong>Local only</strong></div>
+          <div><small>Cloud sync</small><strong>Off</strong></div>
+          <div><small>Device database ID</small><strong id="deviceDatabaseId">—</strong></div>
+          <div><small>Saved here</small><strong id="localDataCount">0 workouts · 0 routines</strong></div>
+        </div>
+        <p class="muted">The device database ID is generated locally so you can confirm that two devices are using separate databases. It is not an account ID and is not uploaded anywhere.</p>
         <p class="muted">Export a backup occasionally so you can restore your data after changing phones, clearing browser data, or reinstalling the app.</p>
         <div class="backup-actions">
           <button id="exportBackup" class="secondary" type="button">Export backup</button>
@@ -236,6 +267,6 @@ Incline Press
   </template>
 
 
-  <script src="app.js?v=18"></script>
+  <script src="app.js?v=19"></script>
 </body>
 </html>

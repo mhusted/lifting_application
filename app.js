@@ -577,6 +577,66 @@ $('importAsWorkout').addEventListener('click',async()=>{
  }
 });
 
+
+function parseRoutineText(text){
+ const raw=String(text||'').split(/\r?\n/).map(cleanImportLine).filter(Boolean);
+ let name='Imported Routine';
+ const exercises=[];
+ for(const line of raw){
+  const s=line.replace(/[×✕✖]/g,'x').replace(/\u00a0/g,' ').trim();
+  // Exercise — 3 x 8-10, Exercise: 3x10, optionally with "sets/reps".
+  let m=s.match(/^(.+?)\s*(?:[-–—:]\s*)?(\d+)\s*(?:sets?\s*(?:of)?\s*)?[xX]\s*(\d+)(?:\s*[-–]\s*(\d+))?\s*(?:reps?)?$/i);
+  if(!m) m=s.match(/^(.+?)\s*[-–—:]\s*(\d+)\s*sets?\s*(?:of\s*)?(\d+)(?:\s*[-–]\s*(\d+))?\s*reps?$/i);
+  if(m){
+   const exName=canonicalExerciseName(m[1].replace(/[*_`]/g,'').trim());
+   exercises.push({name:exName,sets:+m[2],reps:+m[3],repMax:m[4]?+m[4]:null});
+   continue;
+  }
+  if(exercises.length===0 && !/\d/.test(s) && s.length<=60){
+   name=s.replace(/[*_`:#]/g,'').trim()||name;
+  }
+ }
+ return {name,exercises};
+}
+function renderRoutineImportPreview(){
+ const parsed=parseRoutineText($('routineImportText').value);
+ if(!$('routineImportName').dataset.edited)$('routineImportName').value=parsed.name==='Imported Routine'?'':parsed.name;
+ const el=$('routineImportPreview');
+ if(!parsed.exercises.length){el.classList.add('hidden');el.innerHTML='';return;}
+ el.classList.remove('hidden');
+ el.innerHTML=`<div class="preview-title"><strong>${parsed.exercises.length} exercises recognized</strong></div>`+
+  parsed.exercises.map(e=>`<div class="preview-exercise"><strong>${escapeHtml(e.name)}</strong><span>${e.sets} sets · ${e.reps}${e.repMax?`–${e.repMax}`:''} reps</span></div>`).join('');
+}
+function showRoutineImportMessage(text,isError=false){
+ const el=$('routineImportMessage');el.textContent=text;el.classList.remove('hidden');el.classList.toggle('error',isError);
+}
+document.querySelectorAll('.routine-entry-mode').forEach(btn=>btn.addEventListener('click',()=>{
+ document.querySelectorAll('.routine-entry-mode').forEach(b=>b.classList.toggle('active',b===btn));
+ $('routineManualPanel').classList.toggle('active',btn.dataset.routineMode==='manual');
+ $('routineImportPanel').classList.toggle('active',btn.dataset.routineMode==='import');
+}));
+$('routineImportText').addEventListener('input',renderRoutineImportPreview);
+$('routineImportName').addEventListener('input',()=>{$('routineImportName').dataset.edited='1'});
+$('pasteRoutineText').addEventListener('click',async()=>{
+ try{$('routineImportText').value=await navigator.clipboard.readText();renderRoutineImportPreview();}
+ catch(err){showRoutineImportMessage('Clipboard access was blocked. Tap the text box and choose Paste.',true);}
+});
+$('saveImportedRoutine').addEventListener('click',async()=>{
+ try{
+  const parsed=parseRoutineText($('routineImportText').value);
+  if(!parsed.exercises.length){showRoutineImportMessage('No routine exercises were recognized. Try lines such as “Lat Pulldown — 3 × 8-10”.',true);return;}
+  const name=$('routineImportName').value.trim()||parsed.name;
+  const exercises=parsed.exercises.map(e=>({name:e.name,sets:e.sets,reps:e.reps,repMax:e.repMax||null}));
+  const prior=[...routines];
+  routines=[...routines,{id:uid(),name,exercises}];
+  const saved=await saveRoutines();
+  if(!saved){routines=prior;showRoutineImportMessage('The routine was recognized but could not be saved on this device.',true);return;}
+  renderRoutines();updateLocalDataSummary();
+  $('routineImportText').value='';$('routineImportName').value='';$('routineImportName').dataset.edited='';
+  $('routineImportPreview').classList.add('hidden');
+  showRoutineImportMessage(`Saved ${name} as a reusable routine.`);
+ }catch(err){console.error(err);showRoutineImportMessage(`Routine import failed${err?.message?`: ${err.message}`:''}.`,true);}
+});
 function routineCard(r,isStarter=false){
  const ex=r.exercises.map(e=>typeof e[0]==='string'?{name:e[0],sets:e[1],reps:e[2]}:e);
  const el=document.createElement('article');el.className='routine-card';
@@ -646,8 +706,28 @@ function setSummary(ex){
  const n=normalizeExercise(ex);return n.sets.map(s=>`${s.weight}×${s.reps}${s.rir==null?'':` @${s.rir} RIR`}`).join(' · ');
 }
 function renderHistory(){
- const el=$('historyList');el.innerHTML='';[...workouts].sort((a,b)=>b.date.localeCompare(a.date)).forEach(w=>{const nw=normalizedWorkout(w);const d=document.createElement('div');d.className='history-item';d.innerHTML=`<div class="history-top"><div><strong>${escapeHtml(w.name)}</strong><div class="muted">${fmtDate(w.date)} · ${setCountForWorkout(w)} sets · ${fmt(sessionVolume(w))} lb volume</div></div><button class="delete-workout" data-id="${w.id}">Delete</button></div><div class="history-exercises">${nw.exercises.map(e=>`<div class="history-exercise"><strong>${escapeHtml(e.name)}</strong><span class="muted">${escapeHtml(setSummary(e))}</span></div>`).join('')}</div>`;el.appendChild(d)});if(!workouts.length)el.innerHTML='<div class="empty-state"><strong>No workouts yet.</strong><span>Log your first workout to start tracking progress.</span></div>';
- el.querySelectorAll('.delete-workout').forEach(b=>b.addEventListener('click',()=>{if(confirm('Delete this workout?')){workouts=workouts.filter(w=>w.id!==b.dataset.id);saveWorkouts();renderAll();}}));
+ const el=$('historyList');el.innerHTML='';
+ [...workouts].sort((a,b)=>b.date.localeCompare(a.date)).forEach(w=>{
+  const nw=normalizedWorkout(w),d=document.createElement('div');d.className='history-item';
+  d.innerHTML=`<div class="history-top"><div><strong>${escapeHtml(w.name)}</strong><div class="muted">${fmtDate(w.date)} · ${setCountForWorkout(w)} sets · ${fmt(sessionVolume(w))} lb total volume</div></div><button class="delete-workout" data-id="${w.id}">Delete</button></div>
+  <div class="history-exercises">${nw.exercises.map(e=>{
+    const bestSet=e.sets.reduce((best,s)=>e1rm(s.weight,s.reps)>e1rm(best.weight,best.reps)?s:best,e.sets[0]||{weight:0,reps:0});
+    const vol=e.sets.reduce((sum,s)=>sum+s.weight*s.reps,0);
+    const reps=e.sets.reduce((sum,s)=>sum+s.reps,0);
+    return `<div class="history-exercise history-exercise-card">
+      <strong>${escapeHtml(e.name)}</strong>
+      <span class="muted set-sequence">${escapeHtml(setSummary(e))}</span>
+      <div class="exercise-metrics">
+        <div><small>EST. 1-REP MAX</small><strong>${Math.round(bestE1ForExercise(e))} lb</strong><span>Based on ${fmt(bestSet.weight)} × ${bestSet.reps}</span></div>
+        <div><small>TOTAL VOLUME</small><strong>${fmt(vol)} lb</strong><span>${e.sets.length} sets · ${reps} reps</span></div>
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+  el.appendChild(d)
+ });
+ if(!workouts.length)el.innerHTML='<div class="empty-state"><strong>No workouts yet.</strong><span>Log or import your first completed workout to start tracking progress.</span></div>';
+ el.querySelectorAll('.delete-workout').forEach(b=>b.addEventListener('click',async()=>{if(confirm('Delete this workout?')){workouts=workouts.filter(w=>w.id!==b.dataset.id);await saveWorkouts();renderAll();}}));
+ updateLocalDataSummary();
 }
 function allExerciseNames(){return [...new Set(workouts.flatMap(w=>normalizedWorkout(w).exercises.map(e=>e.name)))].sort((a,b)=>a.localeCompare(b))}
 function renderExerciseSelect(){const s=$('exerciseSelect'),cur=s.value,names=allExerciseNames();s.innerHTML=names.map(n=>`<option>${escapeHtml(n)}</option>`).join('');if(names.includes(cur))s.value=cur;s.onchange=renderProgress;renderProgress()}
@@ -746,8 +826,24 @@ $('exportBackup')?.addEventListener('click',exportBackup);
 $('importBackup')?.addEventListener('change',e=>{importBackupFile(e.target.files?.[0]);e.target.value='';});
 $('log')?.addEventListener('input',saveDraft);
 $('log')?.addEventListener('change',saveDraft);
-function renderAll(){renderDashboard();renderRoutines();renderHistory();renderExerciseSelect()}
+function renderAll(){renderDashboard();renderRoutines();renderHistory();renderExerciseSelect();updateLocalDataSummary()}
 
+
+function getDeviceDatabaseId(){
+ const key='liftGrowthDeviceDatabaseId';
+ let id='';
+ try{id=localStorage.getItem(key)||'';}catch(e){}
+ if(!id){
+  const raw=(crypto?.randomUUID?.()||uid()).replace(/-/g,'').toUpperCase();
+  id=`LG-${raw.slice(0,4)}-${raw.slice(4,8)}`;
+  try{localStorage.setItem(key,id);}catch(e){}
+ }
+ return id;
+}
+function updateLocalDataSummary(){
+ if($('deviceDatabaseId'))$('deviceDatabaseId').textContent=getDeviceDatabaseId();
+ if($('localDataCount'))$('localDataCount').textContent=`${workouts.length} workout${workouts.length===1?'':'s'} · ${routines.length} routine${routines.length===1?'':'s'}`;
+}
 async function initializeApp(){
  setStorageStatus('Checking storage…');
  await loadPersistentData();
