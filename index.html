@@ -9,14 +9,14 @@
   <meta name="apple-mobile-web-app-title" content="Lift Growth" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=19" />
+  <link rel="stylesheet" href="styles.css?v=20" />
   <title>Lift Growth</title>
 </head>
 <body>
   <header class="topbar">
     <div>
       <div class="eyebrow">WEEKLY STRENGTH TRACKER</div>
-      <h1>Lift Growth</h1><div class="app-version">v19</div>
+      <h1>Lift Growth</h1><div class="app-version">v20</div>
     </div>
     <button id="installBtn" class="ghost hidden">Install</button>
   </header>
@@ -132,59 +132,54 @@ Seated Row — 3 × 10"></textarea>
 
     <section id="progress" class="panel">
       <div class="card">
-        <h2>Lift progress</h2>
-        <label>Exercise<select id="exerciseSelect"></select></label>
+        <h2>Progress</h2>
+        <p class="muted">Start with your overall training, then select an exercise for a focused strength and volume view.</p>
+        <label>View<select id="exerciseSelect"><option value="__all__">All Exercises</option></select></label>
         <div class="progress-controls">
           <div>
             <span class="control-label">Compare by</span>
-            <div class="progress-toggle-grid two" role="group" aria-label="Time grouping">
+            <div class="progress-toggle-grid four" role="group" aria-label="Time grouping">
               <button class="grouping active" data-group="week">Weekly</button>
               <button class="grouping" data-group="month">Monthly</button>
+              <button class="grouping" data-group="quarter">Quarterly</button>
+              <button class="grouping" data-group="year">Yearly</button>
             </div>
           </div>
           <div>
             <span class="control-label">Time range</span>
             <div class="progress-toggle-grid five" role="group" aria-label="Time range">
-              <button class="range" data-range="4w">4W</button>
-              <button class="range active" data-range="3m">3M</button>
-              <button class="range" data-range="6m">6M</button>
-              <button class="range" data-range="1y">1Y</button>
-              <button class="range" data-range="all">All</button>
+              <button class="range" data-range="4w">4W</button><button class="range active" data-range="3m">3M</button><button class="range" data-range="6m">6M</button><button class="range" data-range="1y">1Y</button><button class="range" data-range="all">All</button>
             </div>
           </div>
-          <div>
-            <span class="control-label">Visualization</span>
-            <div class="progress-toggle-grid two" role="group" aria-label="Chart type">
-              <button class="viz active" data-viz="line">Trend line</button>
-              <button class="viz" data-viz="bar">Bars</button>
-            </div>
-          </div>
+          <div><span class="control-label">Visualization</span><div class="progress-toggle-grid two"><button class="viz active" data-viz="line">Trend line</button><button class="viz" data-viz="bar">Bars</button></div></div>
         </div>
-        <div class="stats-grid">
-          <div><strong id="bestWeight">—</strong><small>Best weight</small></div>
-          <div><strong id="bestE1RM">—</strong><small>Best est. 1RM</small></div>
-          <div><strong id="bestVolume">—</strong><small>Best session volume</small></div>
-        </div>
-        <div class="trend-grid">
-          <div id="strengthChange" class="trend-callout muted">Log at least two periods to see strength change.</div>
+        <div id="allProgressSummary">
+          <div class="stats-grid two-stat"><div><strong id="overallVolume">—</strong><small>Volume in selected range</small></div><div><strong id="overallPRs">—</strong><small>Personal records</small></div></div>
           <div id="volumeChange" class="trend-callout muted">Log at least two periods to see volume change.</div>
+          <div id="progressViewSummary" class="progress-view-summary muted">Weekly view · last 3 months</div>
+          <div class="chart-section"><div class="chart-heading"><strong>Overall training volume</strong><span class="muted">All exercises combined</span></div><div class="chart-wrap"><canvas id="volumeChart" width="720" height="380"></canvas></div></div>
+          <div class="summary-section"><div class="chart-heading"><strong>Personal records</strong><span class="muted">Best estimated 1RM by exercise</span></div><div id="prSummary" class="stack"></div></div>
         </div>
-        <div id="progressViewSummary" class="progress-view-summary muted">Weekly view · last 3 months</div>
-        <div class="chart-section">
-          <div class="chart-heading"><strong>Strength / PR trend</strong><span class="muted">Best estimated 1RM in each period</span></div>
-          <div class="chart-wrap"><canvas id="strengthChart" width="720" height="380"></canvas></div>
+        <div id="exerciseProgressDetail" class="hidden">
+          <div class="stats-grid"><div><strong id="bestWeight">—</strong><small>Best weight</small></div><div><strong id="bestE1RM">—</strong><small>Best est. 1RM</small></div><div><strong id="bestVolume">—</strong><small>Best session volume</small></div></div>
+          <div class="trend-grid"><div id="strengthChange" class="trend-callout muted">Log at least two periods to see strength change.</div><div id="exerciseVolumeChange" class="trend-callout muted">Log at least two periods to see volume change.</div></div>
+          <div id="exerciseProgressViewSummary" class="progress-view-summary muted"></div>
+          <div class="chart-section"><div class="chart-heading"><strong>Strength / PR trend</strong><span class="muted">Best estimated 1RM in each period</span></div><div class="chart-wrap"><canvas id="strengthChart" width="720" height="380"></canvas></div></div>
+          <div class="chart-section"><div class="chart-heading"><strong>Exercise volume</strong><span class="muted">Total volume in each period</span></div><div class="chart-wrap"><canvas id="exerciseVolumeChart" width="720" height="380"></canvas></div></div>
+          <div id="progressTable" class="stack"></div>
         </div>
-        <div class="chart-section">
-          <div class="chart-heading"><strong>Training volume</strong><span class="muted">Total volume in each period</span></div>
-          <div class="chart-wrap"><canvas id="volumeChart" width="720" height="380"></canvas></div>
-        </div>
-        <div id="progressTable" class="stack"></div>
       </div>
     </section>
 
     <section id="history" class="panel">
       <div class="card">
-        <h2>Workout history</h2>
+        <h2>History</h2>
+        <p class="muted">Review all training first, or select an exercise to see every session for that movement.</p>
+        <label>View<select id="historyExerciseSelect"><option value="__all__">All Exercises</option></select></label>
+        <div id="historyAllSummary">
+          <div class="stats-grid two-stat"><div><strong id="historyTotalVolume">—</strong><small>All-time volume</small></div><div><strong id="historyPRCount">—</strong><small>Exercise PRs</small></div></div>
+          <div id="historyPRSummary" class="stack"></div>
+        </div>
         <div id="historyList" class="stack"></div>
       </div>
       <div class="card">
@@ -267,6 +262,6 @@ Seated Row — 3 × 10"></textarea>
   </template>
 
 
-  <script src="app.js?v=19"></script>
+  <script src="app.js?v=20"></script>
 </body>
 </html>

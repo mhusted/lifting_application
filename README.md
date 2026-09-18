@@ -215,9 +215,18 @@ Import Text is now for completed workouts. It detects a date/name when present, 
 ### v18 import fix
 Fixed an infinite recursion in exercise-name canonicalization that could cause `Maximum call stack size exceeded` when importing a historical workout. Historical imports are now validated and persisted transactionally.
 
-## v19
+## v20
 - Added **Create manually / Import text** modes to Routines.
 - Routine text import accepts plans such as `Lat Pulldown — 3 × 8-10` and saves them as reusable routines without creating workout history.
 - Added a **Data, privacy & backup** panel showing Local only, Cloud sync Off, a locally generated device database ID, and local workout/routine counts.
 - Reformatted workout-history exercise statistics into readable Est. 1-Rep Max and Total Volume cards.
 - No workout history or user-entered routines are bundled into the public application.
+
+
+## v20 — Exercise-centric History & Progress
+- History and Progress now open on an All Exercises summary.
+- Overall Volume is the primary summary, followed by Personal Records.
+- Overall volume supports Weekly (default), Monthly, Quarterly, and Yearly aggregation.
+- Exercise selectors include only exercises that have been logged.
+- Selecting an exercise shows its own chronological history, sets/reps/RIR, estimated 1RM, volume, and originating workout.
+- Exercise Progress retains strength/e1RM and volume trends while separating them from the all-exercises overview.

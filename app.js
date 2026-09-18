@@ -705,105 +705,61 @@ function renderDashboard(){
 function setSummary(ex){
  const n=normalizeExercise(ex);return n.sets.map(s=>`${s.weight}×${s.reps}${s.rir==null?'':` @${s.rir} RIR`}`).join(' · ');
 }
-function renderHistory(){
- const el=$('historyList');el.innerHTML='';
- [...workouts].sort((a,b)=>b.date.localeCompare(a.date)).forEach(w=>{
-  const nw=normalizedWorkout(w),d=document.createElement('div');d.className='history-item';
-  d.innerHTML=`<div class="history-top"><div><strong>${escapeHtml(w.name)}</strong><div class="muted">${fmtDate(w.date)} · ${setCountForWorkout(w)} sets · ${fmt(sessionVolume(w))} lb total volume</div></div><button class="delete-workout" data-id="${w.id}">Delete</button></div>
-  <div class="history-exercises">${nw.exercises.map(e=>{
-    const bestSet=e.sets.reduce((best,s)=>e1rm(s.weight,s.reps)>e1rm(best.weight,best.reps)?s:best,e.sets[0]||{weight:0,reps:0});
-    const vol=e.sets.reduce((sum,s)=>sum+s.weight*s.reps,0);
-    const reps=e.sets.reduce((sum,s)=>sum+s.reps,0);
-    return `<div class="history-exercise history-exercise-card">
-      <strong>${escapeHtml(e.name)}</strong>
-      <span class="muted set-sequence">${escapeHtml(setSummary(e))}</span>
-      <div class="exercise-metrics">
-        <div><small>EST. 1-REP MAX</small><strong>${Math.round(bestE1ForExercise(e))} lb</strong><span>Based on ${fmt(bestSet.weight)} × ${bestSet.reps}</span></div>
-        <div><small>TOTAL VOLUME</small><strong>${fmt(vol)} lb</strong><span>${e.sets.length} sets · ${reps} reps</span></div>
-      </div>
-    </div>`;
-  }).join('')}</div>`;
-  el.appendChild(d)
- });
- if(!workouts.length)el.innerHTML='<div class="empty-state"><strong>No workouts yet.</strong><span>Log or import your first completed workout to start tracking progress.</span></div>';
- el.querySelectorAll('.delete-workout').forEach(b=>b.addEventListener('click',async()=>{if(confirm('Delete this workout?')){workouts=workouts.filter(w=>w.id!==b.dataset.id);await saveWorkouts();renderAll();}}));
- updateLocalDataSummary();
-}
 function allExerciseNames(){return [...new Set(workouts.flatMap(w=>normalizedWorkout(w).exercises.map(e=>e.name)))].sort((a,b)=>a.localeCompare(b))}
-function renderExerciseSelect(){const s=$('exerciseSelect'),cur=s.value,names=allExerciseNames();s.innerHTML=names.map(n=>`<option>${escapeHtml(n)}</option>`).join('');if(names.includes(cur))s.value=cur;s.onchange=renderProgress;renderProgress()}
-
-function chartValueLabel(v,metric){return metric==='volume'?`${fmt(v)} lb`:`${Math.round(v)} lb`}
-function shortPointLabel(p){return p.label||fmtDate(p.date).replace(/, \d{4}/,'')}
-function drawChart(points,metric,viz='line',canvasId='strengthChart'){
- const c=$(canvasId),ctx=c.getContext('2d');const cssW=Math.max(280,c.parentElement.clientWidth-2);const ratio=Math.min(window.devicePixelRatio||1,2);c.width=cssW*ratio;c.height=360*ratio;c.style.width=cssW+'px';c.style.height='360px';ctx.scale(ratio,ratio);const w=cssW,h=360,pad={l:58,r:20,t:30,b:62};ctx.clearRect(0,0,w,h);ctx.font='13px -apple-system,BlinkMacSystemFont,sans-serif';ctx.fillStyle='#9ca3af';
- if(!points.length){ctx.fillText('No data in this time range yet.',22,55);return;}
- const vals=points.map(p=>p.v),rawMin=Math.min(...vals),rawMax=Math.max(...vals),spread=Math.max(rawMax-rawMin,rawMax*.08,1),min=Math.max(0,rawMin-spread*.25),max=rawMax+spread*.25;
- ctx.strokeStyle='#273449';ctx.lineWidth=1;for(let i=0;i<4;i++){const y=pad.t+i*(h-pad.t-pad.b)/3;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(w-pad.r,y);ctx.stroke();const val=max-(max-min)*i/3;ctx.fillStyle='#9ca3af';ctx.textAlign='right';ctx.fillText(metric==='volume'?fmt(val):Math.round(val),pad.l-8,y+4)}
- const plotW=w-pad.l-pad.r,plotH=h-pad.t-pad.b;
- if(viz==='bar'){
-  const slot=plotW/Math.max(points.length,1),barW=Math.max(6,Math.min(42,slot*.62));
-  points.forEach((p,i)=>{const x=pad.l+slot*i+slot/2-barW/2,y=pad.t+(max-p.v)/(max-min)*plotH,base=pad.t+(max-min)/(max-min)*plotH;ctx.fillStyle='#60a5fa';ctx.fillRect(x,y,barW,Math.max(2,base-y));if(points.length<=8||i===0||i===points.length-1){ctx.fillStyle='#9ca3af';ctx.textAlign='center';ctx.fillText(shortPointLabel(p),x+barW/2,h-28)}});
- }else{
-  const coords=points.map((p,i)=>({x:pad.l+(points.length===1?plotW/2:i*plotW/(points.length-1)),y:pad.t+(max-p.v)/(max-min)*plotH,...p}));ctx.strokeStyle='#60a5fa';ctx.lineWidth=4;ctx.lineJoin='round';ctx.beginPath();coords.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.stroke();coords.forEach((p,i)=>{ctx.fillStyle='#f8fafc';ctx.beginPath();ctx.arc(p.x,p.y,5,0,Math.PI*2);ctx.fill();if(points.length<=8||i===0||i===coords.length-1){ctx.fillStyle='#9ca3af';ctx.textAlign=i===0?'left':i===coords.length-1?'right':'center';ctx.fillText(shortPointLabel(p),p.x,h-28)}});
- }
- ctx.fillStyle='#f8fafc';ctx.textAlign='right';const last=points.at(-1);ctx.fillText(chartValueLabel(last.v,metric),w-pad.r,20);
-}
-function parseLocalDate(s){const [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d,12,0,0)}
-function filterRowsByRange(rows,range){if(range==='all'||!rows.length)return rows;const latest=parseLocalDate(rows.at(-1).date);const start=new Date(latest);if(range==='4w')start.setDate(start.getDate()-28);if(range==='3m')start.setMonth(start.getMonth()-3);if(range==='6m')start.setMonth(start.getMonth()-6);if(range==='1y')start.setFullYear(start.getFullYear()-1);return rows.filter(r=>parseLocalDate(r.date)>=start)}
-function periodInfo(date,group){const d=parseLocalDate(date);if(group==='session')return {key:date,label:fmtDate(date).replace(/, \d{4}/,'')};if(group==='week'){const monday=new Date(d);monday.setDate(d.getDate()-((d.getDay()+6)%7));const y=monday.getFullYear(),m=String(monday.getMonth()+1).padStart(2,'0'),day=String(monday.getDate()).padStart(2,'0');return {key:`${y}-${m}-${day}`,label:`Wk ${new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric'}).format(monday)}`}}if(group==='month')return {key:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`,label:new Intl.DateTimeFormat(undefined,{month:'short',year:'2-digit'}).format(d)};return {key:String(d.getFullYear()),label:String(d.getFullYear())}}
-function aggregateRows(rows,metric,group){const key=metric==='e1rm'?'e1':metric==='weight'?'weight':'vol';if(group==='session')return rows.map(r=>({v:r[key],date:r.date,label:fmtDate(r.date).replace(/, \d{4}/,''),count:1,rows:[r]}));const buckets=new Map();rows.forEach(r=>{const p=periodInfo(r.date,group);if(!buckets.has(p.key))buckets.set(p.key,{...p,rows:[]});buckets.get(p.key).rows.push(r)});return [...buckets.values()].sort((a,b)=>a.key.localeCompare(b.key)).map(b=>({date:b.rows[0].date,label:b.label,count:b.rows.length,rows:b.rows,v:metric==='volume'?b.rows.reduce((sum,r)=>sum+r.vol,0):Math.max(...b.rows.map(r=>r[key]))}))}
 function exerciseRows(name){
  const rows=[];
  workouts.forEach(w=>{
-  const matching=normalizedWorkout(w).exercises.filter(e=>e.name===name);
-  if(!matching.length)return;
+  const matching=normalizedWorkout(w).exercises.filter(e=>e.name===name);if(!matching.length)return;
   const sets=matching.flatMap(e=>e.sets).filter(s=>s.weight>0&&s.reps>0);if(!sets.length)return;
-  rows.push({date:w.date,sets,weight:Math.max(...sets.map(s=>s.weight)),vol:sets.reduce((a,s)=>a+s.weight*s.reps,0),e1:Math.max(...sets.map(s=>e1rm(s.weight,s.reps)))});
- });
- return rows.sort((a,b)=>a.date.localeCompare(b.date));
+  rows.push({date:w.date,workoutId:w.id,workoutName:w.name,sets,weight:Math.max(...sets.map(s=>s.weight)),vol:sets.reduce((a,s)=>a+s.weight*s.reps,0),e1:Math.max(...sets.map(s=>e1rm(s.weight,s.reps)))});
+ });return rows.sort((a,b)=>a.date.localeCompare(b.date));
 }
-function pctChange(points){
- if(points.length<2||!points[0].v)return null;
- return (points.at(-1).v-points[0].v)/points[0].v*100;
+function allTrainingRows(){
+ return workouts.map(w=>({date:w.date,workoutId:w.id,workoutName:w.name,vol:sessionVolume(w)})).filter(r=>r.vol>0).sort((a,b)=>a.date.localeCompare(b.date));
 }
-function changeHtml(pct,label){
- if(pct==null)return `Log at least two periods to see ${label} change.`;
- return `<strong class="${pct>=0?'good':'bad'}">${pct>=0?'▲':'▼'} ${Math.abs(pct).toFixed(1)}%</strong> ${label} over the selected period`;
+function personalRecords(){
+ return allExerciseNames().map(name=>{const rows=exerciseRows(name);if(!rows.length)return null;const best=rows.reduce((a,b)=>b.e1>a.e1?b:a);return {name,e1:best.e1,weight:best.weight,date:best.date,workoutName:best.workoutName};}).filter(Boolean).sort((a,b)=>b.e1-a.e1);
 }
+function renderPRList(targetId,limit=0){
+ const prs=personalRecords(),shown=limit?prs.slice(0,limit):prs,el=$(targetId);if(!el)return;
+ el.innerHTML=shown.length?shown.map(pr=>`<div class="pr-row"><div><strong>${escapeHtml(pr.name)}</strong><div class="muted">${fmtDate(pr.date)} · ${escapeHtml(pr.workoutName||'Workout')}</div></div><div><strong>${Math.round(pr.e1)} lb</strong><div class="muted">Best est. 1RM</div></div></div>`).join(''):'<div class="empty-state"><strong>No PRs yet.</strong><span>Log a weighted exercise to establish your first record.</span></div>';
+}
+function renderHistorySelect(){
+ const s=$('historyExerciseSelect'),cur=s.value||'__all__',names=allExerciseNames();s.innerHTML='<option value="__all__">All Exercises</option>'+names.map(n=>`<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');s.value=names.includes(cur)||cur==='__all__'?cur:'__all__';s.onchange=renderHistory;
+}
+function renderHistory(){
+ const el=$('historyList'),name=$('historyExerciseSelect')?.value||'__all__';el.innerHTML='';
+ const isAll=name==='__all__';$('historyAllSummary')?.classList.toggle('hidden',!isAll);
+ if(isAll){
+  $('historyTotalVolume').textContent=`${fmt(workouts.reduce((sum,w)=>sum+sessionVolume(w),0))} lb`;$('historyPRCount').textContent=personalRecords().length;renderPRList('historyPRSummary',5);
+  [...workouts].sort((a,b)=>b.date.localeCompare(a.date)).forEach(w=>{const nw=normalizedWorkout(w),d=document.createElement('div');d.className='history-item';d.innerHTML=`<div class="history-top"><div><strong>${escapeHtml(w.name)}</strong><div class="muted">${fmtDate(w.date)} · ${setCountForWorkout(w)} sets · ${fmt(sessionVolume(w))} lb total volume</div></div><button class="delete-workout" data-id="${w.id}">Delete</button></div><div class="history-exercises">${nw.exercises.map(e=>{const bestSet=e.sets.reduce((best,s)=>e1rm(s.weight,s.reps)>e1rm(best.weight,best.reps)?s:best,e.sets[0]||{weight:0,reps:0}),vol=e.sets.reduce((sum,s)=>sum+s.weight*s.reps,0),reps=e.sets.reduce((sum,s)=>sum+s.reps,0);return `<div class="history-exercise history-exercise-card"><strong>${escapeHtml(e.name)}</strong><span class="muted set-sequence">${escapeHtml(setSummary(e))}</span><div class="exercise-metrics"><div><small>EST. 1-REP MAX</small><strong>${Math.round(bestE1ForExercise(e))} lb</strong><span>Based on ${fmt(bestSet.weight)} × ${bestSet.reps}</span></div><div><small>TOTAL VOLUME</small><strong>${fmt(vol)} lb</strong><span>${e.sets.length} sets · ${reps} reps</span></div></div></div>`}).join('')}</div>`;el.appendChild(d)});
+  if(!workouts.length)el.innerHTML='<div class="empty-state"><strong>No workouts yet.</strong><span>Log or import your first completed workout to start tracking progress.</span></div>';
+ }else{
+  const rows=exerciseRows(name).sort((a,b)=>b.date.localeCompare(a.date));
+  rows.forEach(r=>{const d=document.createElement('div');d.className='exercise-history-session';const bestSet=r.sets.reduce((a,b)=>e1rm(b.weight,b.reps)>e1rm(a.weight,a.reps)?b:a,r.sets[0]);const reps=r.sets.reduce((sum,x)=>sum+x.reps,0);d.innerHTML=`<div class="history-session-head"><div><strong>${fmtDate(r.date)}</strong><div class="muted history-context">${escapeHtml(r.workoutName||'Workout')}</div></div><button class="delete-workout" data-id="${r.workoutId}">Delete workout</button></div><div class="muted set-sequence">${r.sets.map(x=>`${fmt(x.weight)}×${x.reps}${x.rir==null?'':` @${x.rir} RIR`}`).join(' · ')}</div><div class="exercise-metrics"><div><small>EST. 1-REP MAX</small><strong>${Math.round(r.e1)} lb</strong><span>Based on ${fmt(bestSet.weight)} × ${bestSet.reps}</span></div><div><small>TOTAL VOLUME</small><strong>${fmt(r.vol)} lb</strong><span>${r.sets.length} sets · ${reps} reps</span></div></div>`;el.appendChild(d)});
+  if(!rows.length)el.innerHTML='<div class="empty-state"><strong>No sessions yet.</strong><span>No history is available for this exercise.</span></div>';
+ }
+ el.querySelectorAll('.delete-workout').forEach(b=>b.addEventListener('click',async()=>{if(confirm('Delete this workout?')){workouts=workouts.filter(w=>w.id!==b.dataset.id);await saveWorkouts();renderAll();}}));updateLocalDataSummary();
+}
+function renderExerciseSelect(){const s=$('exerciseSelect'),cur=s.value||'__all__',names=allExerciseNames();s.innerHTML='<option value="__all__">All Exercises</option>'+names.map(n=>`<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');s.value=names.includes(cur)||cur==='__all__'?cur:'__all__';s.onchange=renderProgress;renderHistorySelect();renderProgress();renderHistory()}
+function chartValueLabel(v,metric){return metric==='volume'?`${fmt(v)} lb`:`${Math.round(v)} lb`}
+function shortPointLabel(p){return p.label||fmtDate(p.date).replace(/, \d{4}/,'')}
+function drawChart(points,metric,viz='line',canvasId='strengthChart'){
+ const c=$(canvasId);if(!c)return;const ctx=c.getContext('2d'),cssW=Math.max(280,c.parentElement.clientWidth-2),ratio=Math.min(window.devicePixelRatio||1,2);c.width=cssW*ratio;c.height=360*ratio;c.style.width=cssW+'px';c.style.height='360px';ctx.scale(ratio,ratio);const w=cssW,h=360,pad={l:58,r:20,t:30,b:62};ctx.clearRect(0,0,w,h);ctx.font='13px -apple-system,BlinkMacSystemFont,sans-serif';ctx.fillStyle='#9ca3af';if(!points.length){ctx.fillText('No data in this time range yet.',22,55);return;}const vals=points.map(p=>p.v),rawMin=Math.min(...vals),rawMax=Math.max(...vals),spread=Math.max(rawMax-rawMin,rawMax*.08,1),min=Math.max(0,rawMin-spread*.25),max=rawMax+spread*.25;ctx.strokeStyle='#273449';ctx.lineWidth=1;for(let i=0;i<4;i++){const y=pad.t+i*(h-pad.t-pad.b)/3;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(w-pad.r,y);ctx.stroke();const val=max-(max-min)*i/3;ctx.fillStyle='#9ca3af';ctx.textAlign='right';ctx.fillText(metric==='volume'?fmt(val):Math.round(val),pad.l-8,y+4)}const plotW=w-pad.l-pad.r,plotH=h-pad.t-pad.b;if(viz==='bar'){const slot=plotW/Math.max(points.length,1),barW=Math.max(6,Math.min(42,slot*.62));points.forEach((p,i)=>{const x=pad.l+slot*i+slot/2-barW/2,y=pad.t+(max-p.v)/(max-min)*plotH,base=pad.t+plotH;ctx.fillStyle='#60a5fa';ctx.fillRect(x,y,barW,Math.max(2,base-y));if(points.length<=8||i===0||i===points.length-1){ctx.fillStyle='#9ca3af';ctx.textAlign='center';ctx.fillText(shortPointLabel(p),x+barW/2,h-28)}})}else{const coords=points.map((p,i)=>({x:pad.l+(points.length===1?plotW/2:i*plotW/(points.length-1)),y:pad.t+(max-p.v)/(max-min)*plotH,...p}));ctx.strokeStyle='#60a5fa';ctx.lineWidth=4;ctx.lineJoin='round';ctx.beginPath();coords.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.stroke();coords.forEach((p,i)=>{ctx.fillStyle='#f8fafc';ctx.beginPath();ctx.arc(p.x,p.y,5,0,Math.PI*2);ctx.fill();if(points.length<=8||i===0||i===coords.length-1){ctx.fillStyle='#9ca3af';ctx.textAlign=i===0?'left':i===coords.length-1?'right':'center';ctx.fillText(shortPointLabel(p),p.x,h-28)}})}ctx.fillStyle='#f8fafc';ctx.textAlign='right';ctx.fillText(chartValueLabel(points.at(-1).v,metric),w-pad.r,20);
+}
+function parseLocalDate(s){const [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d,12,0,0)}
+function filterRowsByRange(rows,range){if(range==='all'||!rows.length)return rows;const latest=parseLocalDate(rows.at(-1).date),start=new Date(latest);if(range==='4w')start.setDate(start.getDate()-28);if(range==='3m')start.setMonth(start.getMonth()-3);if(range==='6m')start.setMonth(start.getMonth()-6);if(range==='1y')start.setFullYear(start.getFullYear()-1);return rows.filter(r=>parseLocalDate(r.date)>=start)}
+function periodInfo(date,group){const d=parseLocalDate(date);if(group==='session')return {key:date,label:fmtDate(date).replace(/, \d{4}/,'')};if(group==='week'){const monday=new Date(d);monday.setDate(d.getDate()-((d.getDay()+6)%7));const y=monday.getFullYear(),m=String(monday.getMonth()+1).padStart(2,'0'),day=String(monday.getDate()).padStart(2,'0');return {key:`${y}-${m}-${day}`,label:`Wk ${new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric'}).format(monday)}`}}if(group==='month')return {key:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`,label:new Intl.DateTimeFormat(undefined,{month:'short',year:'2-digit'}).format(d)};if(group==='quarter'){const q=Math.floor(d.getMonth()/3)+1;return {key:`${d.getFullYear()}-Q${q}`,label:`Q${q} ${d.getFullYear()}`}}return {key:String(d.getFullYear()),label:String(d.getFullYear())}}
+function aggregateRows(rows,metric,group){const key=metric==='e1rm'?'e1':metric==='weight'?'weight':'vol';if(group==='session')return rows.map(r=>({v:r[key],date:r.date,label:fmtDate(r.date).replace(/, \d{4}/,''),count:1,rows:[r]}));const buckets=new Map();rows.forEach(r=>{const p=periodInfo(r.date,group);if(!buckets.has(p.key))buckets.set(p.key,{...p,rows:[]});buckets.get(p.key).rows.push(r)});return [...buckets.values()].sort((a,b)=>a.key.localeCompare(b.key)).map(b=>({date:b.rows[0].date,key:b.key,label:b.label,count:b.rows.length,rows:b.rows,v:metric==='volume'?b.rows.reduce((sum,r)=>sum+r.vol,0):Math.max(...b.rows.map(r=>r[key]))}))}
+function pctChange(points){if(points.length<2||!points.at(-2).v)return null;return (points.at(-1).v-points.at(-2).v)/points.at(-2).v*100}
+function changeHtml(pct,label){if(pct==null)return `Log at least two periods to see ${label} change.`;return `<strong class="${pct>=0?'good':'bad'}">${pct>=0?'▲':'▼'} ${Math.abs(pct).toFixed(1)}%</strong> ${label} vs previous period`}
 function rangeLabel(range){return range==='all'?'all time':range==='4w'?'last 4 weeks':range==='3m'?'last 3 months':range==='6m'?'last 6 months':'last year'}
+function groupLabel(group){return group==='week'?'Weekly':group==='month'?'Monthly':group==='quarter'?'Quarterly':'Yearly'}
 function renderProgress(){
- const name=$('exerciseSelect').value;
- if(!name){
-  $('bestWeight').textContent=$('bestE1RM').textContent=$('bestVolume').textContent='—';
-  $('strengthChange').textContent='Log a workout to begin tracking.';$('volumeChange').textContent='Log a workout to begin tracking.';
-  drawChart([],'e1rm',currentViz,'strengthChart');drawChart([],'volume',currentViz,'volumeChart');
-  $('progressTable').innerHTML='<div class="muted">Your exercise history will appear here.</div>';return;
- }
- const allRows=exerciseRows(name),rows=filterRowsByRange(allRows,currentRange);
- if(!rows.length){
-  $('bestWeight').textContent=$('bestE1RM').textContent=$('bestVolume').textContent='—';
-  $('strengthChange').textContent=$('volumeChange').textContent='No sessions for this exercise in the selected range.';
-  drawChart([],'e1rm',currentViz,'strengthChart');drawChart([],'volume',currentViz,'volumeChart');
-  $('progressTable').innerHTML='<div class="empty-state"><strong>No data in this range.</strong><span>Choose a wider time range or log another workout.</span></div>';return;
- }
- $('bestWeight').textContent=Math.max(...rows.map(r=>r.weight))+' lb';
- $('bestE1RM').textContent=Math.round(Math.max(...rows.map(r=>r.e1)))+' lb';
- $('bestVolume').textContent=fmt(Math.max(...rows.map(r=>r.vol)))+' lb';
- const strengthPoints=aggregateRows(rows,'e1rm',currentGrouping);
- const volumePoints=aggregateRows(rows,'volume',currentGrouping);
- drawChart(strengthPoints,'e1rm',currentViz,'strengthChart');
- drawChart(volumePoints,'volume',currentViz,'volumeChart');
- $('strengthChange').innerHTML=changeHtml(pctChange(strengthPoints),'estimated 1RM');
- $('volumeChange').innerHTML=changeHtml(pctChange(volumePoints),`${currentGrouping} volume`);
- const groupLabel=currentGrouping==='week'?'Weekly':'Monthly';
- $('progressViewSummary').textContent=`${groupLabel} view · ${rows.length} session${rows.length===1?'':'s'} · ${rangeLabel(currentRange)}`;
- const strengthByKey=new Map(strengthPoints.map(p=>[periodInfo(p.date,currentGrouping).key,p]));
- const volumeByKey=new Map(volumePoints.map(p=>[periodInfo(p.date,currentGrouping).key,p]));
- const keys=[...new Set([...strengthByKey.keys(),...volumeByKey.keys()])].sort().reverse();
- $('progressTable').innerHTML=keys.map(k=>{
-   const sp=strengthByKey.get(k),vp=volumeByKey.get(k),p=sp||vp;
-   return `<div class="progress-item"><strong>${escapeHtml(p.label)}</strong><div class="muted">${p.count} session${p.count===1?'':'s'}</div><div class="muted">Best est. 1RM: ${sp?chartValueLabel(sp.v,'e1rm'):'—'} · Total volume: ${vp?chartValueLabel(vp.v,'volume'):'—'}</div></div>`;
- }).join('');
+ const name=$('exerciseSelect').value||'__all__',isAll=name==='__all__';$('allProgressSummary').classList.toggle('hidden',!isAll);$('exerciseProgressDetail').classList.toggle('hidden',isAll);
+ if(isAll){const rows=filterRowsByRange(allTrainingRows(),currentRange),points=aggregateRows(rows,'volume',currentGrouping);$('overallVolume').textContent=`${fmt(rows.reduce((s,r)=>s+r.vol,0))} lb`;$('overallPRs').textContent=personalRecords().length;drawChart(points,'volume',currentViz,'volumeChart');$('volumeChange').innerHTML=changeHtml(pctChange(points),`${currentGrouping} volume`);$('progressViewSummary').textContent=`${groupLabel(currentGrouping)} view · ${rows.length} workout${rows.length===1?'':'s'} · ${rangeLabel(currentRange)}`;renderPRList('prSummary');return;}
+ const allRows=exerciseRows(name),rows=filterRowsByRange(allRows,currentRange);if(!rows.length){$('bestWeight').textContent=$('bestE1RM').textContent=$('bestVolume').textContent='—';$('strengthChange').textContent=$('exerciseVolumeChange').textContent='No sessions for this exercise in the selected range.';drawChart([],'e1rm',currentViz,'strengthChart');drawChart([],'volume',currentViz,'exerciseVolumeChart');$('progressTable').innerHTML='<div class="empty-state"><strong>No data in this range.</strong><span>Choose a wider time range or log another workout.</span></div>';return;}
+ $('bestWeight').textContent=Math.max(...rows.map(r=>r.weight))+' lb';$('bestE1RM').textContent=Math.round(Math.max(...rows.map(r=>r.e1)))+' lb';$('bestVolume').textContent=fmt(Math.max(...rows.map(r=>r.vol)))+' lb';const strengthPoints=aggregateRows(rows,'e1rm',currentGrouping),volumePoints=aggregateRows(rows,'volume',currentGrouping);drawChart(strengthPoints,'e1rm',currentViz,'strengthChart');drawChart(volumePoints,'volume',currentViz,'exerciseVolumeChart');$('strengthChange').innerHTML=changeHtml(pctChange(strengthPoints),'estimated 1RM');$('exerciseVolumeChange').innerHTML=changeHtml(pctChange(volumePoints),`${currentGrouping} volume`);$('exerciseProgressViewSummary').textContent=`${groupLabel(currentGrouping)} view · ${rows.length} session${rows.length===1?'':'s'} · ${rangeLabel(currentRange)}`;const strengthByKey=new Map(strengthPoints.map(p=>[p.key||periodInfo(p.date,currentGrouping).key,p])),volumeByKey=new Map(volumePoints.map(p=>[p.key||periodInfo(p.date,currentGrouping).key,p])),keys=[...new Set([...strengthByKey.keys(),...volumeByKey.keys()])].sort().reverse();$('progressTable').innerHTML=keys.map(k=>{const sp=strengthByKey.get(k),vp=volumeByKey.get(k),p=sp||vp;return `<div class="progress-item"><strong>${escapeHtml(p.label)}</strong><div class="muted">${p.count} session${p.count===1?'':'s'}</div><div class="muted">Best est. 1RM: ${sp?chartValueLabel(sp.v,'e1rm'):'—'} · Total volume: ${vp?chartValueLabel(vp.v,'volume'):'—'}</div></div>`}).join('');
 }
 
 document.querySelectorAll('.grouping').forEach(b=>b.addEventListener('click',()=>{currentGrouping=b.dataset.group;document.querySelectorAll('.grouping').forEach(x=>x.classList.toggle('active',x===b));renderProgress();}));
