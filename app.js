@@ -741,7 +741,7 @@ function renderHistory(){
  }
  el.querySelectorAll('.delete-workout').forEach(b=>b.addEventListener('click',async()=>{if(confirm('Delete this workout?')){workouts=workouts.filter(w=>w.id!==b.dataset.id);await saveWorkouts();renderAll();}}));updateLocalDataSummary();
 }
-function renderExerciseSelect(){const s=$('exerciseSelect'),cur=s.value||'__all__',names=allExerciseNames();s.innerHTML='<option value="__all__">All Exercises</option>'+names.map(n=>`<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');s.value=names.includes(cur)||cur==='__all__'?cur:'__all__';s.onchange=renderProgress;renderHistorySelect();renderProgress();renderHistory()}
+function renderExerciseSelect(){const s=$('exerciseSelect'),cur=s.value||'__all__',names=allExerciseNames();s.innerHTML='<option value="__all__">All Exercises</option>'+names.map(n=>`<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');s.value=names.includes(cur)||cur==='__all__'?cur:'__all__';s.onchange=()=>{if(s.value!=='__all__'){currentProgressMode='overall';document.querySelectorAll('.progress-mode').forEach(b=>b.classList.toggle('active',b.dataset.mode==='overall'))}renderProgress()};renderHistorySelect();renderProgress();renderHistory()}
 function chartValueLabel(v,metric){return metric==='volume'?`${fmt(v)} lb`:`${Math.round(v)} lb`}
 function shortPointLabel(p){return p.label||fmtDate(p.date).replace(/, \d{4}/,'')}
 function drawChart(points,metric,viz='line',canvasId='strengthChart'){
@@ -755,14 +755,47 @@ function pctChange(points){if(points.length<2||!points.at(-2).v)return null;retu
 function changeHtml(pct,label){if(pct==null)return `Log at least two periods to see ${label} change.`;return `<strong class="${pct>=0?'good':'bad'}">${pct>=0?'▲':'▼'} ${Math.abs(pct).toFixed(1)}%</strong> ${label} vs previous period`}
 function rangeLabel(range){return range==='all'?'all time':range==='4w'?'last 4 weeks':range==='3m'?'last 3 months':range==='6m'?'last 6 months':'last year'}
 function groupLabel(group){return group==='week'?'Weekly':group==='month'?'Monthly':group==='quarter'?'Quarterly':'Yearly'}
+let currentProgressMode='overall';
+function weekKeyForDate(date){return periodInfo(date,'week').key}
+function workoutSortKey(w){return `${w.date}|${String(w.id??'')}`}
+function ordinalWorkoutRows(){
+ const grouped=new Map();
+ workouts.forEach(w=>{const key=weekKeyForDate(w.date);if(!grouped.has(key))grouped.set(key,[]);grouped.get(key).push(w)});
+ const rows=[];
+ [...grouped.entries()].sort((a,b)=>a[0].localeCompare(b[0])).forEach(([weekKey,items])=>{
+  items.sort((a,b)=>workoutSortKey(a).localeCompare(workoutSortKey(b))).forEach((w,i)=>rows.push({weekKey,lift:i+1,date:w.date,workoutId:w.id,workoutName:w.name,vol:sessionVolume(w),workout:w}));
+ });
+ return rows;
+}
+function signedNumber(n){return `${n>=0?'+':'−'}${fmt(Math.abs(n))} lb`}
+function signedPct(n){return n==null?'—':`${n>=0?'+':'−'}${Math.abs(n).toFixed(1)}%`}
+function liftExerciseMap(w){
+ const map=new Map();
+ normalizedWorkout(w).exercises.forEach(ex=>{const sets=ex.sets.filter(x=>x.weight>0&&x.reps>0);if(!sets.length)return;const vol=sets.reduce((a,x)=>a+x.weight*x.reps,0),e1=Math.max(...sets.map(x=>e1rm(x.weight,x.reps))),weight=Math.max(...sets.map(x=>x.weight));if(map.has(ex.name)){const cur=map.get(ex.name);cur.vol+=vol;cur.e1=Math.max(cur.e1,e1);cur.weight=Math.max(cur.weight,weight)}else map.set(ex.name,{name:ex.name,vol,e1,weight});});
+ return map;
+}
+function exerciseComparisonHtml(current,previous){
+ const cm=liftExerciseMap(current.workout),pm=previous?liftExerciseMap(previous.workout):new Map(),names=[...new Set([...cm.keys(),...pm.keys()])].sort((a,b)=>a.localeCompare(b));
+ return names.map(name=>{const c=cm.get(name),p=pm.get(name);if(!c)return `<div class="lift-exercise-compare muted"><strong>${escapeHtml(name)}</strong><span>Not performed in current lift</span></div>`;const diff=p?c.vol-p.vol:null,pct=p&&p.vol?diff/p.vol*100:null,e1diff=p?c.e1-p.e1:null;return `<div class="lift-exercise-compare"><div><strong>${escapeHtml(name)}</strong><span class="muted">${p?`${fmt(p.vol)} → `:''}${fmt(c.vol)} lb volume</span></div><div class="lift-deltas">${p?`<strong class="${diff>=0?'good':'bad'}">${signedNumber(diff)} · ${signedPct(pct)}</strong>`:'<strong>First comparison</strong>'}<span class="muted">Est. 1RM ${Math.round(c.e1)} lb${p?` · ${e1diff>=0?'+':''}${Math.round(e1diff)} lb`:''}</span></div></div>`}).join('');
+}
+function renderLiftComparisons(){
+ const all=filterRowsByRange(ordinalWorkoutRows(),currentRange),byLift=new Map();all.forEach(r=>{if(!byLift.has(r.lift))byLift.set(r.lift,[]);byLift.get(r.lift).push(r)});const el=$('liftComparisonList');
+ $('liftComparisonSummary').textContent=`${all.length} workout${all.length===1?'':'s'} · ${rangeLabel(currentRange)} · matched by order within each week`;
+ if(!all.length){el.innerHTML='<div class="empty-state"><strong>No workouts in this range.</strong><span>Log workouts to build like-for-like comparisons.</span></div>';return;}
+ el.innerHTML=[...byLift.entries()].sort((a,b)=>a[0]-b[0]).map(([lift,rows])=>{rows.sort((a,b)=>a.weekKey.localeCompare(b.weekKey));const c=rows.at(-1),p=rows.at(-2),diff=p?c.vol-p.vol:null,pct=p&&p.vol?diff/p.vol*100:null;return `<details class="lift-comparison-card"><summary><div><span class="lift-label">LIFT ${lift}</span><strong>${fmt(c.vol)} lb</strong><span class="muted">${fmtDate(c.date)} · ${escapeHtml(c.workoutName||'Workout')}</span></div><div class="lift-change">${p?`<strong class="${diff>=0?'good':'bad'}">${signedNumber(diff)}</strong><span class="${diff>=0?'good':'bad'}">${signedPct(pct)}</span>`:'<span class="muted">No prior Lift ${lift}</span>'}</div></summary><div class="lift-compare-body">${p?`<div class="compare-context"><span>Previous</span><strong>${fmt(p.vol)} lb</strong><span>${fmtDate(p.date)} · ${escapeHtml(p.workoutName||'Workout')}</span></div>`:`<div class="compare-context muted">A prior Lift ${lift} is needed for a like-for-like change.</div>`}<div class="exercise-compare-list">${exerciseComparisonHtml(c,p)}</div></div></details>`}).join('');
+}
+function setProgressMode(mode){currentProgressMode=mode;document.querySelectorAll('.progress-mode').forEach(b=>b.classList.toggle('active',b.dataset.mode===mode));renderProgress()}
 function renderProgress(){
- const name=$('exerciseSelect').value||'__all__',isAll=name==='__all__';$('allProgressSummary').classList.toggle('hidden',!isAll);$('exerciseProgressDetail').classList.toggle('hidden',isAll);
+ const name=$('exerciseSelect').value||'__all__',isAll=name==='__all__',isLift=isAll&&currentProgressMode==='lift';$('allProgressSummary').classList.toggle('hidden',!isAll||isLift);$('liftProgressSummary').classList.toggle('hidden',!isLift);$('exerciseProgressDetail').classList.toggle('hidden',isAll);$('timeGroupingControl')?.classList.toggle('hidden',isLift);$('visualizationControl')?.classList.toggle('hidden',isLift);
+ if(isLift){renderLiftComparisons();return;}
  if(isAll){const rows=filterRowsByRange(allTrainingRows(),currentRange),points=aggregateRows(rows,'volume',currentGrouping);$('overallVolume').textContent=`${fmt(rows.reduce((s,r)=>s+r.vol,0))} lb`;$('overallPRs').textContent=personalRecords().length;drawChart(points,'volume',currentViz,'volumeChart');$('volumeChange').innerHTML=changeHtml(pctChange(points),`${currentGrouping} volume`);$('progressViewSummary').textContent=`${groupLabel(currentGrouping)} view · ${rows.length} workout${rows.length===1?'':'s'} · ${rangeLabel(currentRange)}`;renderPRList('prSummary');return;}
  const allRows=exerciseRows(name),rows=filterRowsByRange(allRows,currentRange);if(!rows.length){$('bestWeight').textContent=$('bestE1RM').textContent=$('bestVolume').textContent='—';$('strengthChange').textContent=$('exerciseVolumeChange').textContent='No sessions for this exercise in the selected range.';drawChart([],'e1rm',currentViz,'strengthChart');drawChart([],'volume',currentViz,'exerciseVolumeChart');$('progressTable').innerHTML='<div class="empty-state"><strong>No data in this range.</strong><span>Choose a wider time range or log another workout.</span></div>';return;}
  $('bestWeight').textContent=Math.max(...rows.map(r=>r.weight))+' lb';$('bestE1RM').textContent=Math.round(Math.max(...rows.map(r=>r.e1)))+' lb';$('bestVolume').textContent=fmt(Math.max(...rows.map(r=>r.vol)))+' lb';const strengthPoints=aggregateRows(rows,'e1rm',currentGrouping),volumePoints=aggregateRows(rows,'volume',currentGrouping);drawChart(strengthPoints,'e1rm',currentViz,'strengthChart');drawChart(volumePoints,'volume',currentViz,'exerciseVolumeChart');$('strengthChange').innerHTML=changeHtml(pctChange(strengthPoints),'estimated 1RM');$('exerciseVolumeChange').innerHTML=changeHtml(pctChange(volumePoints),`${currentGrouping} volume`);$('exerciseProgressViewSummary').textContent=`${groupLabel(currentGrouping)} view · ${rows.length} session${rows.length===1?'':'s'} · ${rangeLabel(currentRange)}`;const strengthByKey=new Map(strengthPoints.map(p=>[p.key||periodInfo(p.date,currentGrouping).key,p])),volumeByKey=new Map(volumePoints.map(p=>[p.key||periodInfo(p.date,currentGrouping).key,p])),keys=[...new Set([...strengthByKey.keys(),...volumeByKey.keys()])].sort().reverse();$('progressTable').innerHTML=keys.map(k=>{const sp=strengthByKey.get(k),vp=volumeByKey.get(k),p=sp||vp;return `<div class="progress-item"><strong>${escapeHtml(p.label)}</strong><div class="muted">${p.count} session${p.count===1?'':'s'}</div><div class="muted">Best est. 1RM: ${sp?chartValueLabel(sp.v,'e1rm'):'—'} · Total volume: ${vp?chartValueLabel(vp.v,'volume'):'—'}</div></div>`}).join('');
 }
 
-document.querySelectorAll('.grouping').forEach(b=>b.addEventListener('click',()=>{currentGrouping=b.dataset.group;document.querySelectorAll('.grouping').forEach(x=>x.classList.toggle('active',x===b));renderProgress();}));
+document.querySelectorAll('.progress-mode').forEach(b=>b.addEventListener('click',()=>setProgressMode(b.dataset.mode)));
+document.querySelectorAll('.grouping').forEach(b=>b.addEventListener('click',()=>{currentGrouping=b.dataset.group;document.querySelectorAll('.progress-mode').forEach(b=>b.addEventListener('click',()=>setProgressMode(b.dataset.mode)));
+document.querySelectorAll('.grouping').forEach(x=>x.classList.toggle('active',x===b));renderProgress();}));
 document.querySelectorAll('.range').forEach(b=>b.addEventListener('click',()=>{currentRange=b.dataset.range;document.querySelectorAll('.range').forEach(x=>x.classList.toggle('active',x===b));renderProgress();}));
 document.querySelectorAll('.viz').forEach(b=>b.addEventListener('click',()=>{currentViz=b.dataset.viz;document.querySelectorAll('.viz').forEach(x=>x.classList.toggle('active',x===b));renderProgress();}));
 function switchTab(id){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.dataset.tab===id));document.querySelectorAll('.panel').forEach(x=>x.classList.toggle('active',x.id===id))}

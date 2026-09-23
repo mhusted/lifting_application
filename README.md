@@ -230,3 +230,10 @@ Fixed an infinite recursion in exercise-name canonicalization that could cause `
 - Exercise selectors include only exercises that have been logged.
 - Selecting an exercise shows its own chronological history, sets/reps/RIR, estimated 1RM, volume, and originating workout.
 - Exercise Progress retains strength/e1RM and volume trends while separating them from the all-exercises overview.
+
+
+## v21 — Like-for-like lift comparison
+
+Progress now includes an **Overall / By Lift** switch. **By Lift** assigns completed workouts an ordinal position inside each Monday–Sunday training week (Lift 1, Lift 2, Lift 3, etc.) and compares only matching positions across weeks. The latest Lift 1 is compared with the prior available Lift 1, Lift 2 with Lift 2, and so on, regardless of weekday or routine name.
+
+Each lift card shows current total volume, prior comparable volume, raw volume change, and percentage change. Expanding a lift drills into its exercises and shows each exercise's current/prior volume, raw and percentage volume change, plus estimated-1RM context. Overall weekly/monthly/quarterly/yearly volume and exercise-centric progress remain unchanged.

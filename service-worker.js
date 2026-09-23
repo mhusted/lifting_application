@@ -1,5 +1,5 @@
-const CACHE='lift-growth-v20';
-const ASSETS=['./','./index.html','./styles.css?v=20','./app.js?v=20','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
+const CACHE='lift-growth-v21';
+const ASSETS=['./','./index.html','./styles.css?v=21','./app.js?v=21','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
 self.addEventListener('install',event=>{
  event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting()));
 });
