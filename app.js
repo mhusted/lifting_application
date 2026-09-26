@@ -618,7 +618,7 @@ async function importRoutineExcel(file){
   rows.forEach(r=>{
    const name=String(col(r,'Routine','Routine Name')||r.__sheet||'Excel Routine').trim(),exercise=canonicalExerciseName(col(r,'Exercise','Exercise Name','Movement'));
    const sets=+col(r,'Sets','Target Sets')||0,reps=+col(r,'Reps','Target Reps','Rep Min')||0,repMax=+col(r,'Rep Max','Max Reps')||null;if(!exercise||!sets||!reps)return;
-   if(!groups.has(name))groups.set(name,{id:uid(),name,exercises:[]});groups.get(name).exercises.push({name,sets,reps,repMax});
+   if(!groups.has(name))groups.set(name,{id:uid(),name,exercises:[]});groups.get(name).exercises.push({name:exercise,sets,reps,repMax});
   });
   const incoming=[...groups.values()].filter(r=>r.exercises.length);if(!incoming.length)throw new Error('No routine exercises were recognized. Use columns Routine, Exercise, Sets, Reps, and optional Rep Max.');
   const prior=[...routines];routines=[...routines,...incoming];if(!await saveRoutines()){routines=prior;throw new Error('Could not save imported routines.');}
