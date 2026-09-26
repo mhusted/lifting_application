@@ -202,9 +202,9 @@ function setupExerciseAutocomplete(input,menu,onPick){
 // Normalizes old workouts (weight/reps/sets on an exercise) into the new per-set structure.
 function normalizeExercise(ex){
  const name=canonicalExerciseName(ex.name||'');
- if(Array.isArray(ex.sets)) return {name,sets:ex.sets.map(s=>({weight:+s.weight||0,reps:+s.reps||0,rir:s.rir==null||s.rir===''?null:+s.rir}))};
+ if(Array.isArray(ex.sets)) return {name,status:ex.status||'Completed',note:ex.note||'',sets:ex.sets.map(s=>({weight:+s.weight||0,reps:+s.reps||0,rir:s.rir==null||s.rir===''?null:+s.rir}))};
  const count=Math.max(1,+ex.sets||1);
- return {name,sets:Array.from({length:count},()=>({weight:+ex.weight||0,reps:+ex.reps||0,rir:ex.rir==null?null:+ex.rir}))};
+ return {name,status:ex.status||'Completed',note:ex.note||'',sets:Array.from({length:count},()=>({weight:+ex.weight||0,reps:+ex.reps||0,rir:ex.rir==null?null:+ex.rir}))};
 }
 function normalizedWorkout(w){return {...w,exercises:(w.exercises||[]).map(normalizeExercise)}}
 function exerciseVolume(ex){return normalizeExercise(ex).sets.reduce((sum,s)=>sum+s.weight*s.reps,0)}
@@ -231,6 +231,8 @@ function addExercise(name='',setCount=3,targetReps='',prefillSets=null,target=nu
  const node=$('exerciseTemplate').content.firstElementChild.cloneNode(true);
  const nameInput=node.querySelector('.exercise-name');
  nameInput.value=canonicalExerciseName(name);
+ if(target?.status)node.querySelector('.exercise-status').value=target.status;
+ if(target?.note)node.querySelector('.exercise-note').value=target.note;
  setupExerciseAutocomplete(nameInput,node.querySelector('.exercise-suggestions'),()=>renderPreviousPerformance(node));
  const rows=node.querySelector('.set-rows'); rows.innerHTML='';
  const sets=Array.isArray(prefillSets)&&prefillSets.length?prefillSets:Array.from({length:Math.max(1,+setCount||1)},()=>({reps:targetReps||''}));
@@ -250,7 +252,7 @@ function addExercise(name='',setCount=3,targetReps='',prefillSets=null,target=nu
  return node;
 }
 function clearWorkout(){
- $('workoutName').value='';$('routineQuickSelect').value='';$('exerciseRows').innerHTML='';addExercise();deleteDraft();
+ $('workoutName').value='';if($('workoutNote'))$('workoutNote').value='';$('routineQuickSelect').value='';$('exerciseRows').innerHTML='';addExercise();deleteDraft();
 }
 $('addExercise').addEventListener('click',()=>addExercise('',3,''));
 $('clearWorkout').addEventListener('click',clearWorkout);
@@ -258,7 +260,7 @@ $('clearWorkout').addEventListener('click',clearWorkout);
 function loadRoutineIntoLog(routine){
  $('exerciseRows').innerHTML='';
  $('workoutName').value=routine.name;
- routine.exercises.forEach(e=>addExercise(e.name,e.sets,e.reps));
+ routine.exercises.forEach(e=>addExercise(e.name,e.sets,e.reps,null,e));
  $('routineQuickSelect').value=routine.id;
  switchTab('log');
  window.scrollTo({top:0,behavior:'smooth'});
@@ -271,15 +273,10 @@ $('routineQuickSelect').addEventListener('change',e=>{
 
 $('saveWorkout').addEventListener('click',async()=>{
  const exercises=[...document.querySelectorAll('#exerciseRows .exercise-card')].map(card=>({
-  name:canonicalExerciseName(card.querySelector('.exercise-name').value),
-  sets:[...card.querySelectorAll('.set-entry')].map(row=>({
-   weight:+row.querySelector('.set-weight').value||0,
-   reps:+row.querySelector('.set-reps').value||0,
-   rir:row.querySelector('.set-rir').value===''?null:+row.querySelector('.set-rir').value
-  })).filter(s=>s.weight>0&&s.reps>0)
- })).filter(x=>x.name&&x.sets.length);
- if(!exercises.length){alert('Add at least one exercise with a completed set (weight and reps).');return;}
- workouts.push({id:uid(),date:$('date').value||today(),name:$('workoutName').value.trim()||'Workout',workoutType:$('workoutType')?.value||'Upper',goal:$('workoutGoal')?.value||'Balanced',exercises});
+  name:canonicalExerciseName(card.querySelector('.exercise-name').value),status:card.querySelector('.exercise-status')?.value||'Completed',note:card.querySelector('.exercise-note')?.value.trim()||'',sets:[...card.querySelectorAll('.set-entry')].map(row=>({weight:+row.querySelector('.set-weight').value||0,reps:+row.querySelector('.set-reps').value||0,rir:row.querySelector('.set-rir').value===''?null:+row.querySelector('.set-rir').value})).filter(s=>s.weight>0&&s.reps>0)
+ })).filter(x=>x.name&&(x.sets.length||x.status!=='Completed'));
+ if(!exercises.some(x=>x.sets.length)){alert('Add at least one exercise with a completed set (weight and reps).');return;}
+ workouts.push({id:uid(),date:$('date').value||today(),name:$('workoutName').value.trim()||'Workout',workoutType:$('workoutType')?.value||'Upper',goal:$('workoutGoal')?.value||'Balanced',note:$('workoutNote')?.value.trim()||'',exercises});
  workouts.sort((a,b)=>a.date.localeCompare(b.date));const saved=await saveWorkouts();if(!saved){alert('Lift Growth could not save this workout on this device. Please export a backup and try again.');return;}await deleteDraft();clearWorkout();$('date').value=today();renderAll();alert('Workout saved on this device.');
 });
 
@@ -913,10 +910,19 @@ function renderLiftComparisons(){
  el.innerHTML=[...byLift.entries()].sort((a,b)=>a[0]-b[0]).map(([lift,rows])=>{rows.sort((a,b)=>a.weekKey.localeCompare(b.weekKey));const c=rows.at(-1),p=rows.at(-2),diff=p?c.vol-p.vol:null,pct=p&&p.vol?diff/p.vol*100:null;return `<details class="lift-comparison-card"><summary><div><span class="lift-label">LIFT ${lift}</span><strong>${fmt(c.vol)} lb</strong><span class="muted">${fmtDate(c.date)} · ${escapeHtml(c.workoutName||'Workout')}</span></div><div class="lift-change">${p?`<strong class="${diff>=0?'good':'bad'}">${signedNumber(diff)}</strong><span class="${diff>=0?'good':'bad'}">${signedPct(pct)}</span>`:'<span class="muted">No prior Lift ${lift}</span>'}</div></summary><div class="lift-compare-body">${p?`<div class="compare-context"><span>Previous</span><strong>${fmt(p.vol)} lb</strong><span>${fmtDate(p.date)} · ${escapeHtml(p.workoutName||'Workout')}</span></div>`:`<div class="compare-context muted">A prior Lift ${lift} is needed for a like-for-like change.</div>`}<div class="exercise-compare-list">${exerciseComparisonHtml(c,p)}</div></div></details>`}).join('');
 }
 function setProgressMode(mode){currentProgressMode=mode;document.querySelectorAll('.progress-mode').forEach(b=>b.classList.toggle('active',b.dataset.mode===mode));renderProgress()}
+
+let currentComparisonMetric='volume';
+function comparisonValue(row,metric){if(metric==='weight')return row.weight||0;if(metric==='e1rm')return row.e1||0;return row.vol||0}
+function comparisonLabel(v){return v?fmt(v)+' lb':'—'}
+function periodKeysForRows(rows,group){const map=new Map();rows.forEach(r=>{const p=periodInfo(r.date,group);map.set(p.key,p.label)});return [...map].sort((x,y)=>x[0].localeCompare(y[0]))}
+function renderExerciseMatrix(){const el=$('comparisonMatrix');if(!el)return;const periods=periodKeysForRows(filterRowsByRange(allTrainingRows(),currentRange),currentGrouping),names=allExerciseNames();if(!periods.length||!names.length){el.innerHTML='<div class="empty-state"><strong>No comparison data yet.</strong></div>';return}const metric=currentComparisonMetric,rows=names.map(name=>{const by=new Map();filterRowsByRange(exerciseRows(name),currentRange).forEach(r=>{const p=periodInfo(r.date,currentGrouping),v=comparisonValue(r,metric),cur=by.get(p.key);by.set(p.key,metric==='volume'?(cur||0)+v:Math.max(cur||0,v))});return {name,by}});el.innerHTML='<div class="comparison-scroll"><table class="comparison-table"><thead><tr><th>Exercise</th>'+periods.map(p=>'<th>'+escapeHtml(p[1])+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr><th>'+escapeHtml(r.name)+'</th>'+periods.map(p=>'<td>'+comparisonLabel(r.by.get(p[0]))+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>'}
+function renderLiftMatrix(){const el=$('liftComparisonMatrix');if(!el)return;const rows=filterRowsByRange(liftSequenceRows(),currentRange),periods=periodKeysForRows(rows,currentGrouping);if(!periods.length){el.innerHTML='';return}const lifts=[...new Set(rows.map(r=>r.lift))].sort((x,y)=>x-y),metric=currentComparisonMetric;el.innerHTML=lifts.map(lift=>{const lr=rows.filter(r=>r.lift===lift),names=[...new Set(lr.flatMap(r=>normalizedWorkout(workouts.find(w=>w.id===r.workoutId)||{}).exercises.map(e=>e.name)))].sort();return '<div class="lift-matrix-block"><strong>Lift '+lift+'</strong><div class="comparison-scroll"><table class="comparison-table"><thead><tr><th>Exercise</th>'+periods.map(p=>'<th>'+escapeHtml(p[1])+'</th>').join('')+'</tr></thead><tbody>'+names.map(name=>'<tr><th>'+escapeHtml(name)+'</th>'+periods.map(p=>{const candidates=lr.filter(r=>periodInfo(r.date,currentGrouping).key===p[0]).map(r=>normalizedWorkout(workouts.find(w=>w.id===r.workoutId)||{}).exercises.find(e=>e.name===name)).filter(Boolean),completed=candidates.filter(e=>(e.sets||[]).some(s=>s.weight>0&&s.reps>0));if(completed.length){const vals=completed.map(e=>metric==='volume'?exerciseVolume(e):metric==='weight'?Math.max(...e.sets.map(s=>s.weight||0)):bestE1ForExercise(e)),v=metric==='volume'?vals.reduce((s,x)=>s+x,0):Math.max(...vals);return '<td>'+comparisonLabel(v)+'</td>'}const skipped=candidates.find(e=>e.status&&e.status!=='Completed');return '<td>'+(skipped?'<span class="skip-status" title="'+escapeHtml(skipped.note||'')+'">'+escapeHtml(skipped.status)+'</span>':'—')+'</td>'}).join('')+'</tr>').join('')+'</tbody></table></div></div>'}).join('')}
+function renderComparisonTables(){renderExerciseMatrix();renderLiftMatrix()}
+
 function renderProgress(){
  const name=$('exerciseSelect').value||'__all__',isAll=name==='__all__',isLift=isAll&&currentProgressMode==='lift';$('allProgressSummary').classList.toggle('hidden',!isAll||isLift);$('liftProgressSummary').classList.toggle('hidden',!isLift);$('exerciseProgressDetail').classList.toggle('hidden',isAll);$('timeGroupingControl')?.classList.toggle('hidden',isLift);$('visualizationControl')?.classList.toggle('hidden',isLift);
- if(isLift){renderLiftComparisons();return;}
- if(isAll){const rows=filterRowsByRange(allTrainingRows(),currentRange),points=aggregateRows(rows,'volume',currentGrouping);$('overallVolume').textContent=`${fmt(rows.reduce((s,r)=>s+r.vol,0))} lb`;$('overallPRs').textContent=personalRecords().length;drawChart(points,'volume',currentViz,'volumeChart');$('volumeChange').innerHTML=changeHtml(pctChange(points),`${currentGrouping} volume`);$('progressViewSummary').textContent=`${groupLabel(currentGrouping)} view · ${rows.length} workout${rows.length===1?'':'s'} · ${rangeLabel(currentRange)}`;renderPRList('prSummary');return;}
+ if(isLift){renderLiftComparisons();renderLiftMatrix();return;}
+ if(isAll){renderExerciseMatrix();const rows=filterRowsByRange(allTrainingRows(),currentRange),points=aggregateRows(rows,'volume',currentGrouping);$('overallVolume').textContent=`${fmt(rows.reduce((s,r)=>s+r.vol,0))} lb`;$('overallPRs').textContent=personalRecords().length;drawChart(points,'volume',currentViz,'volumeChart');$('volumeChange').innerHTML=changeHtml(pctChange(points),`${currentGrouping} volume`);$('progressViewSummary').textContent=`${groupLabel(currentGrouping)} view · ${rows.length} workout${rows.length===1?'':'s'} · ${rangeLabel(currentRange)}`;renderPRList('prSummary');return;}
  const allRows=exerciseRows(name),rows=filterRowsByRange(allRows,currentRange);if(!rows.length){$('bestWeight').textContent=$('bestE1RM').textContent=$('bestVolume').textContent='—';$('strengthChange').textContent=$('exerciseVolumeChange').textContent='No sessions for this exercise in the selected range.';drawChart([],'e1rm',currentViz,'strengthChart');drawChart([],'volume',currentViz,'exerciseVolumeChart');$('progressTable').innerHTML='<div class="empty-state"><strong>No data in this range.</strong><span>Choose a wider time range or log another workout.</span></div>';return;}
  $('bestWeight').textContent=Math.max(...rows.map(r=>r.weight))+' lb';$('bestE1RM').textContent=Math.round(Math.max(...rows.map(r=>r.e1)))+' lb';$('bestVolume').textContent=fmt(Math.max(...rows.map(r=>r.vol)))+' lb';const strengthPoints=aggregateRows(rows,'e1rm',currentGrouping),volumePoints=aggregateRows(rows,'volume',currentGrouping);drawChart(strengthPoints,'e1rm',currentViz,'strengthChart');drawChart(volumePoints,'volume',currentViz,'exerciseVolumeChart');$('strengthChange').innerHTML=changeHtml(pctChange(strengthPoints),'estimated 1RM');$('exerciseVolumeChange').innerHTML=changeHtml(pctChange(volumePoints),`${currentGrouping} volume`);$('exerciseProgressViewSummary').textContent=`${groupLabel(currentGrouping)} view · ${rows.length} session${rows.length===1?'':'s'} · ${rangeLabel(currentRange)}`;const strengthByKey=new Map(strengthPoints.map(p=>[p.key||periodInfo(p.date,currentGrouping).key,p])),volumeByKey=new Map(volumePoints.map(p=>[p.key||periodInfo(p.date,currentGrouping).key,p])),keys=[...new Set([...strengthByKey.keys(),...volumeByKey.keys()])].sort().reverse();$('progressTable').innerHTML=keys.map(k=>{const sp=strengthByKey.get(k),vp=volumeByKey.get(k),p=sp||vp;return `<div class="progress-item"><strong>${escapeHtml(p.label)}</strong><div class="muted">${p.count} session${p.count===1?'':'s'}</div><div class="muted">Best est. 1RM: ${sp?chartValueLabel(sp.v,'e1rm'):'—'} · Total volume: ${vp?chartValueLabel(vp.v,'volume'):'—'}</div></div>`}).join('');
 }
@@ -925,6 +931,7 @@ document.querySelectorAll('.progress-mode').forEach(b=>b.addEventListener('click
 document.querySelectorAll('.grouping').forEach(b=>b.addEventListener('click',()=>{currentGrouping=b.dataset.group;document.querySelectorAll('.progress-mode').forEach(b=>b.addEventListener('click',()=>setProgressMode(b.dataset.mode)));
 document.querySelectorAll('.grouping').forEach(x=>x.classList.toggle('active',x===b));renderProgress();}));
 document.querySelectorAll('.range').forEach(b=>b.addEventListener('click',()=>{currentRange=b.dataset.range;document.querySelectorAll('.range').forEach(x=>x.classList.toggle('active',x===b));renderProgress();}));
+document.querySelectorAll('.comparison-metric').forEach(b=>b.addEventListener('click',()=>{currentComparisonMetric=b.dataset.metric;document.querySelectorAll('.comparison-metric').forEach(x=>x.classList.toggle('active',x===b));renderComparisonTables();}));
 document.querySelectorAll('.viz').forEach(b=>b.addEventListener('click',()=>{currentViz=b.dataset.viz;document.querySelectorAll('.viz').forEach(x=>x.classList.toggle('active',x===b));renderProgress();}));
 function switchTab(id){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.dataset.tab===id));document.querySelectorAll('.panel').forEach(x=>x.classList.toggle('active',x.id===id))}
 document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
