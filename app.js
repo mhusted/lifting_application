@@ -849,10 +849,16 @@ function renderPRList(targetId,limit=0){
 function renderHistorySelect(){
  const s=$('historyExerciseSelect'),cur=s.value||'__all__',names=allExerciseNames();s.innerHTML='<option value="__all__">All Exercises</option>'+names.map(n=>`<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');s.value=names.includes(cur)||cur==='__all__'?cur:'__all__';s.onchange=renderHistory;
 }
+function renderWorkoutRankings(){
+ const el=$('workoutRankingList');if(!el)return;
+ const ranked=[...workouts].map(w=>({w,s:scoreWorkout(w)})).sort((a,b)=>b.s.score-a.s.score||b.w.date.localeCompare(a.w.date));
+ el.innerHTML=ranked.length?ranked.map((x,i)=>'<div class="pr-row"><div><strong>#'+(i+1)+' '+escapeHtml(x.w.name)+'</strong><div class="muted">'+fmtDate(x.w.date)+' · '+escapeHtml(x.s.type)+' · '+escapeHtml(x.s.goal)+'</div></div><div><strong>'+x.s.score+'/100</strong><div class="muted">Workout score</div></div></div>').join(''):'<div class="empty-state"><strong>No workouts to rank yet.</strong><span>Log a workout to create your first score.</span></div>';
+}
 function renderHistory(){
  const el=$('historyList'),name=$('historyExerciseSelect')?.value||'__all__';el.innerHTML='';
  const isAll=name==='__all__';$('historyAllSummary')?.classList.toggle('hidden',!isAll);
  if(isAll){
+  renderWorkoutRankings();
   $('historyTotalVolume').textContent=`${fmt(workouts.reduce((sum,w)=>sum+sessionVolume(w),0))} lb`;$('historyPRCount').textContent=personalRecords().length;renderPRList('historyPRSummary',5);
   [...workouts].sort((a,b)=>b.date.localeCompare(a.date)).forEach(w=>{const nw=normalizedWorkout(w),d=document.createElement('div');d.className='history-item';d.innerHTML=`<div class="history-top"><div><strong>${escapeHtml(w.name)}</strong><div class="muted">${fmtDate(w.date)} · ${setCountForWorkout(w)} sets · ${fmt(sessionVolume(w))} lb total volume</div></div><button class="delete-workout" data-id="${w.id}">Delete</button></div>${workoutScoreHtml(w)}<div class="history-exercises">${nw.exercises.map(e=>{const bestSet=e.sets.reduce((best,s)=>e1rm(s.weight,s.reps)>e1rm(best.weight,best.reps)?s:best,e.sets[0]||{weight:0,reps:0}),vol=e.sets.reduce((sum,s)=>sum+s.weight*s.reps,0),reps=e.sets.reduce((sum,s)=>sum+s.reps,0);return `<div class="history-exercise history-exercise-card"><strong>${escapeHtml(e.name)}</strong><span class="muted set-sequence">${escapeHtml(setSummary(e))}</span><div class="exercise-metrics"><div><small>EST. 1-REP MAX</small><strong>${Math.round(bestE1ForExercise(e))} lb</strong><span>Based on ${fmt(bestSet.weight)} × ${bestSet.reps}</span></div><div><small>TOTAL VOLUME</small><strong>${fmt(vol)} lb</strong><span>${e.sets.length} sets · ${reps} reps</span></div></div></div>`}).join('')}</div>`;el.appendChild(d)});
   if(!workouts.length)el.innerHTML='<div class="empty-state"><strong>No workouts yet.</strong><span>Log or import your first completed workout to start tracking progress.</span></div>';
