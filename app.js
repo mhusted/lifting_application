@@ -279,7 +279,7 @@ $('saveWorkout').addEventListener('click',async()=>{
   })).filter(s=>s.weight>0&&s.reps>0)
  })).filter(x=>x.name&&x.sets.length);
  if(!exercises.length){alert('Add at least one exercise with a completed set (weight and reps).');return;}
- workouts.push({id:uid(),date:$('date').value||today(),name:$('workoutName').value.trim()||'Workout',exercises});
+ workouts.push({id:uid(),date:$('date').value||today(),name:$('workoutName').value.trim()||'Workout',workoutType:$('workoutType')?.value||'Upper',goal:$('workoutGoal')?.value||'Balanced',exercises});
  workouts.sort((a,b)=>a.date.localeCompare(b.date));const saved=await saveWorkouts();if(!saved){alert('Lift Growth could not save this workout on this device. Please export a backup and try again.');return;}await deleteDraft();clearWorkout();$('date').value=today();renderAll();alert('Workout saved on this device.');
 });
 
@@ -542,7 +542,7 @@ $('importAsWorkout').addEventListener('click',async()=>{
   })).filter(e=>e.name&&e.sets.length);
   if(!exercises.length){showImportMessage('No completed weighted sets were recognized. Your history was not changed.',true);return;}
 
-  workout={id:uid(),date,name,exercises};
+  workout={id:uid(),date,name,workoutType:$('importWorkoutType')?.value||'Upper',goal:$('importWorkoutGoal')?.value||'Balanced',exercises};
   const nextWorkouts=[...workouts,workout].sort((a,b)=>a.date.localeCompare(b.date));
 
   // Validate the complete workout before changing the in-memory history.
@@ -577,6 +577,57 @@ $('importAsWorkout').addEventListener('click',async()=>{
  }
 });
 
+
+
+function excelDate(v){
+ if(v instanceof Date&&!Number.isNaN(v))return v.toISOString().slice(0,10);
+ if(typeof v==='number'&&window.XLSX?.SSF?.parse_date_code){const d=XLSX.SSF.parse_date_code(v);if(d)return [d.y,String(d.m).padStart(2,'0'),String(d.d).padStart(2,'0')].join('-');}
+ const d=new Date(v);return Number.isNaN(d)?'':d.toISOString().slice(0,10);
+}
+async function readExcelRows(file){
+ if(!window.XLSX)throw new Error('Excel reader did not load. Check your connection and reload Lift Growth.');
+ const data=await file.arrayBuffer(),wb=XLSX.read(data,{type:'array',cellDates:true}),rows=[];
+ wb.SheetNames.forEach(sheet=>XLSX.utils.sheet_to_json(wb.Sheets[sheet],{defval:''}).forEach(r=>rows.push({...r,__sheet:sheet})));
+ return rows;
+}
+function col(row,...names){const map=new Map(Object.keys(row).map(k=>[k.trim().toLowerCase().replace(/[_ -]+/g,''),row[k]]));for(const n of names){const v=map.get(n.toLowerCase().replace(/[_ -]+/g,''));if(v!==undefined&&v!=='')return v;}return '';}
+async function importWorkoutExcel(file){
+ try{
+  const rows=await readExcelRows(file);if(!rows.length)throw new Error('No data rows were found.');
+  const groups=new Map();
+  rows.forEach(r=>{
+   const exercise=canonicalExerciseName(col(r,'Exercise','Exercise Name','Movement'));if(!exercise)return;
+   const date=excelDate(col(r,'Date','Workout Date'))||today(),name=String(col(r,'Workout','Workout Name','Session')||r.__sheet||'Excel Workout').trim();
+   const key=date+'|'+name,type=normalizeWorkoutType(col(r,'Workout Type','Type')||'Other'),goal=WORKOUT_GOALS.find(x=>x.toLowerCase()===String(col(r,'Goal')).toLowerCase())||'Balanced';
+   if(!groups.has(key))groups.set(key,{id:uid(),date,name,workoutType:type,goal,exercises:[]});
+   const g=groups.get(key),weight=+col(r,'Weight','Weight lb','Load')||0,reps=+col(r,'Reps','Repetitions')||0,rir=col(r,'RIR','Reps In Reserve');
+   let ex=g.exercises.find(x=>x.name.toLowerCase()===exercise.toLowerCase());if(!ex){ex={name:exercise,sets:[]};g.exercises.push(ex);}
+   if(weight>0&&reps>0)ex.sets.push({weight,reps,rir:rir===''?null:+rir});
+  });
+  const incoming=[...groups.values()].map(w=>({...w,exercises:w.exercises.filter(e=>e.sets.length)})).filter(w=>w.exercises.length);
+  if(!incoming.length)throw new Error('No completed weighted sets were recognized. Use columns Date, Workout, Exercise, Weight, Reps, and optional RIR, Workout Type, Goal.');
+  const prior=[...workouts];workouts=[...workouts,...incoming].sort((x,y)=>x.date.localeCompare(y.date));if(!await saveWorkouts()){workouts=prior;throw new Error('Could not save imported workouts.');}
+  renderAll();showImportMessage('Imported '+incoming.length+' workout'+(incoming.length===1?'':'s')+' from Excel.');
+ }catch(err){console.error(err);showImportMessage('Excel import failed: '+err.message,true);}
+ finally{$('workoutExcelFile').value='';}
+}
+async function importRoutineExcel(file){
+ try{
+  const rows=await readExcelRows(file);if(!rows.length)throw new Error('No data rows were found.');
+  const groups=new Map();
+  rows.forEach(r=>{
+   const name=String(col(r,'Routine','Routine Name')||r.__sheet||'Excel Routine').trim(),exercise=canonicalExerciseName(col(r,'Exercise','Exercise Name','Movement'));
+   const sets=+col(r,'Sets','Target Sets')||0,reps=+col(r,'Reps','Target Reps','Rep Min')||0,repMax=+col(r,'Rep Max','Max Reps')||null;if(!exercise||!sets||!reps)return;
+   if(!groups.has(name))groups.set(name,{id:uid(),name,exercises:[]});groups.get(name).exercises.push({name:exercise,sets,reps,repMax});
+  });
+  const incoming=[...groups.values()].filter(r=>r.exercises.length);if(!incoming.length)throw new Error('No routine exercises were recognized. Use columns Routine, Exercise, Sets, Reps, and optional Rep Max.');
+  const prior=[...routines];routines=[...routines,...incoming];if(!await saveRoutines()){routines=prior;throw new Error('Could not save imported routines.');}
+  renderRoutines();updateLocalDataSummary();showRoutineImportMessage('Imported '+incoming.length+' routine'+(incoming.length===1?'':'s')+' from Excel.');
+ }catch(err){console.error(err);showRoutineImportMessage('Excel import failed: '+err.message,true);}
+ finally{$('routineExcelFile').value='';}
+}
+$('workoutExcelFile')?.addEventListener('change',e=>importWorkoutExcel(e.target.files?.[0]));
+$('routineExcelFile')?.addEventListener('change',e=>importRoutineExcel(e.target.files?.[0]));
 
 function parseRoutineText(text){
  const raw=String(text||'').split(/\r?\n/).map(cleanImportLine).filter(Boolean);
@@ -695,6 +746,77 @@ $('routineForm').addEventListener('submit',e=>{
  saveRoutines();$('routineDialog').close();renderRoutines();
 });
 
+
+const WORKOUT_TYPES=['Upper','Lower','Push','Pull','Full Body','Other'];
+const WORKOUT_GOALS=['Balanced','Strength','Hypertrophy'];
+function normalizeWorkoutType(v=''){
+ const s=String(v).trim().toLowerCase();
+ const exact=WORKOUT_TYPES.find(x=>x.toLowerCase()===s);if(exact)return exact;
+ if(/upper/.test(s))return 'Upper';if(/lower|leg/.test(s))return 'Lower';if(/push/.test(s))return 'Push';if(/pull/.test(s))return 'Pull';if(/full/.test(s))return 'Full Body';return 'Other';
+}
+function inferWorkoutType(w){
+ if(w?.workoutType)return normalizeWorkoutType(w.workoutType);
+ const n=String(w?.name||'').toLowerCase();
+ const named=normalizeWorkoutType(n);if(named!=='Other')return named;
+ const groups=new Set(normalizedWorkout(w).exercises.flatMap(e=>exerciseMuscleGroups(e.name)));
+ const upper=['chest','back','shoulders','biceps','triceps'].filter(x=>groups.has(x)).length;
+ const lower=['quads','hamstrings','glutes','calves'].filter(x=>groups.has(x)).length;
+ if(upper&&lower)return 'Full Body';if(lower>=2&&!upper)return 'Lower';return upper?'Upper':'Other';
+}
+function exerciseMuscleGroups(name){
+ const n=String(name||'').toLowerCase(),g=[];
+ if(/bench|chest|pec|fly|push-up/.test(n))g.push('chest');
+ if(/pulldown|pull-up|row|straight-arm|back extension/.test(n))g.push('back');
+ if(/shoulder|lateral|front raise|rear delt|reverse pec|face pull|arnold/.test(n))g.push('shoulders');
+ if(/bicep|curl/.test(n)&&!/leg curl/.test(n))g.push('biceps');
+ if(/tricep|skull|dip/.test(n))g.push('triceps');
+ if(/squat|leg press|leg extension|lunge|split squat/.test(n))g.push('quads');
+ if(/leg curl|romanian|deadlift|good morning/.test(n))g.push('hamstrings');
+ if(/hip thrust|glute|romanian|deadlift|split squat|lunge/.test(n))g.push('glutes');
+ if(/calf/.test(n))g.push('calves');
+ if(/crunch|plank|knee raise|rotation|wood chop|russian/.test(n))g.push('core');
+ return [...new Set(g)];
+}
+function targetGroups(type){
+ return type==='Upper'?['chest','back','shoulders','biceps','triceps']:type==='Lower'?['quads','hamstrings','glutes','calves']:type==='Push'?['chest','shoulders','triceps']:type==='Pull'?['back','shoulders','biceps']:type==='Full Body'?['chest','back','quads','hamstrings','glutes']:['chest','back','shoulders','quads','hamstrings','glutes'];
+}
+function scoreWorkout(w){
+ const type=inferWorkoutType(w),goal=WORKOUT_GOALS.includes(w?.goal)?w.goal:'Balanced',nw=normalizedWorkout(w),vol=sessionVolume(w);
+ const previous=[...workouts].filter(x=>x.id!==w.id&&x.date<=w.date&&inferWorkoutType(x)===type).sort((x,y)=>y.date.localeCompare(x.date)).find(x=>x.date<w.date||String(x.id)<String(w.id));
+ let progression=20;
+ if(previous){
+  const pm=new Map(normalizedWorkout(previous).exercises.map(e=>[e.name.toLowerCase(),bestE1ForExercise(e)]));
+  const comparable=nw.exercises.filter(e=>pm.has(e.name.toLowerCase()));
+  if(comparable.length){
+   const changes=comparable.map(e=>{const p=pm.get(e.name.toLowerCase()),c=bestE1ForExercise(e);return p?Math.max(-.2,Math.min(.2,(c-p)/p)):0});
+   const avg=changes.reduce((s,x)=>s+x,0)/changes.length;progression=Math.max(8,Math.min(30,20+avg*50));
+  }
+ }
+ const targets=targetGroups(type),worked=new Set(nw.exercises.flatMap(e=>exerciseMuscleGroups(e.name))),coverage=targets.filter(x=>worked.has(x)).length/targets.length;
+ let balance=25*coverage;
+ if(type==='Upper'&&worked.has('chest')&&worked.has('back'))balance=Math.min(25,balance+2);
+ if(type==='Lower'&&worked.has('quads')&&worked.has('hamstrings'))balance=Math.min(25,balance+2);
+ const peer=[...workouts].filter(x=>x.id!==w.id&&inferWorkoutType(x)===type&&sessionVolume(x)>0).map(sessionVolume).sort((x,y)=>x-y);
+ const median=peer.length?peer[Math.floor(peer.length/2)]:vol;
+ const ratio=median?vol/median:1;
+ let volume=20*Math.max(.45,Math.min(1,1-Math.abs(1-ratio)*.45));
+ const sets=nw.exercises.flatMap(e=>e.sets).filter(s=>s.weight>0&&s.reps>0),rir=sets.filter(s=>s.rir!=null).map(s=>s.rir);
+ let effort=10;
+ if(rir.length){const avg=rir.reduce((s,x)=>s+x,0)/rir.length;const ideal=goal==='Strength'?2:goal==='Hypertrophy'?1.5:2;effort=Math.max(5,15-Math.abs(avg-ideal)*2.5);}
+ const exConsistency=nw.exercises.map(e=>{const s=e.sets.filter(x=>x.weight>0&&x.reps>0);if(s.length<2)return 1;const perf=s.map(x=>e1rm(x.weight,x.reps)),hi=Math.max(...perf),lo=Math.min(...perf);return hi?Math.max(0,1-(hi-lo)/hi):1});
+ const consistency=10*(exConsistency.length?exConsistency.reduce((s,x)=>s+x,0)/exConsistency.length:0);
+ const weights=goal==='Strength'?{p:1.15,b:.8,v:.85,e:1.05,c:1}:{p:1,b:1,v:1,e:1,c:1};
+ if(goal==='Hypertrophy'){weights.p=.9;weights.b=1.05;weights.v=1.15;weights.e=1.05;}
+ const raw=progression*weights.p+balance*weights.b+volume*weights.v+effort*weights.e+consistency*weights.c;
+ const max=30*weights.p+25*weights.b+20*weights.v+15*weights.e+10*weights.c;
+ const score=Math.round(raw/max*100);
+ return {score,type,goal,parts:{progression:Math.round(progression/30*100),balance:Math.round(balance/25*100),volume:Math.round(volume/20*100),effort:Math.round(effort/15*100),consistency:Math.round(consistency/10*100)},previous};
+}
+function workoutScoreHtml(w){
+ const s=scoreWorkout(w),label=s.score>=90?'Excellent':s.score>=80?'Very good':s.score>=70?'Good':s.score>=60?'Solid':'Needs balance';
+ return '<div class="workout-score"><div class="score-main"><strong>'+s.score+'/100</strong><span>'+label+' · '+escapeHtml(s.type)+' · '+escapeHtml(s.goal)+'</span></div><div class="score-parts"><span>Progression '+s.parts.progression+'%</span><span>Balance '+s.parts.balance+'%</span><span>Volume '+s.parts.volume+'%</span><span>Effort '+s.parts.effort+'%</span><span>Consistency '+s.parts.consistency+'%</span></div></div>';
+}
+
 function renderDashboard(){
  const now=new Date(),cur=startOfWeek(now.toISOString().slice(0,10)),prev=new Date(cur),next=new Date(cur);prev.setDate(prev.getDate()-7);next.setDate(next.getDate()+7);
  const inRange=(w,a,b)=>{const d=new Date(w.date+'T12:00:00');return d>=a&&d<b};const cw=workouts.filter(w=>inRange(w,cur,next)),pw=workouts.filter(w=>inRange(w,prev,cur));
@@ -727,12 +849,18 @@ function renderPRList(targetId,limit=0){
 function renderHistorySelect(){
  const s=$('historyExerciseSelect'),cur=s.value||'__all__',names=allExerciseNames();s.innerHTML='<option value="__all__">All Exercises</option>'+names.map(n=>`<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');s.value=names.includes(cur)||cur==='__all__'?cur:'__all__';s.onchange=renderHistory;
 }
+function renderWorkoutRankings(){
+ const el=$('workoutRankingList');if(!el)return;
+ const ranked=[...workouts].map(w=>({w,s:scoreWorkout(w)})).sort((a,b)=>b.s.score-a.s.score||b.w.date.localeCompare(a.w.date));
+ el.innerHTML=ranked.length?ranked.map((x,i)=>'<div class="pr-row"><div><strong>#'+(i+1)+' '+escapeHtml(x.w.name)+'</strong><div class="muted">'+fmtDate(x.w.date)+' · '+escapeHtml(x.s.type)+' · '+escapeHtml(x.s.goal)+'</div></div><div><strong>'+x.s.score+'/100</strong><div class="muted">Workout score</div></div></div>').join(''):'<div class="empty-state"><strong>No workouts to rank yet.</strong><span>Log a workout to create your first score.</span></div>';
+}
 function renderHistory(){
  const el=$('historyList'),name=$('historyExerciseSelect')?.value||'__all__';el.innerHTML='';
  const isAll=name==='__all__';$('historyAllSummary')?.classList.toggle('hidden',!isAll);
  if(isAll){
+  renderWorkoutRankings();
   $('historyTotalVolume').textContent=`${fmt(workouts.reduce((sum,w)=>sum+sessionVolume(w),0))} lb`;$('historyPRCount').textContent=personalRecords().length;renderPRList('historyPRSummary',5);
-  [...workouts].sort((a,b)=>b.date.localeCompare(a.date)).forEach(w=>{const nw=normalizedWorkout(w),d=document.createElement('div');d.className='history-item';d.innerHTML=`<div class="history-top"><div><strong>${escapeHtml(w.name)}</strong><div class="muted">${fmtDate(w.date)} · ${setCountForWorkout(w)} sets · ${fmt(sessionVolume(w))} lb total volume</div></div><button class="delete-workout" data-id="${w.id}">Delete</button></div><div class="history-exercises">${nw.exercises.map(e=>{const bestSet=e.sets.reduce((best,s)=>e1rm(s.weight,s.reps)>e1rm(best.weight,best.reps)?s:best,e.sets[0]||{weight:0,reps:0}),vol=e.sets.reduce((sum,s)=>sum+s.weight*s.reps,0),reps=e.sets.reduce((sum,s)=>sum+s.reps,0);return `<div class="history-exercise history-exercise-card"><strong>${escapeHtml(e.name)}</strong><span class="muted set-sequence">${escapeHtml(setSummary(e))}</span><div class="exercise-metrics"><div><small>EST. 1-REP MAX</small><strong>${Math.round(bestE1ForExercise(e))} lb</strong><span>Based on ${fmt(bestSet.weight)} × ${bestSet.reps}</span></div><div><small>TOTAL VOLUME</small><strong>${fmt(vol)} lb</strong><span>${e.sets.length} sets · ${reps} reps</span></div></div></div>`}).join('')}</div>`;el.appendChild(d)});
+  [...workouts].sort((a,b)=>b.date.localeCompare(a.date)).forEach(w=>{const nw=normalizedWorkout(w),d=document.createElement('div');d.className='history-item';d.innerHTML=`<div class="history-top"><div><strong>${escapeHtml(w.name)}</strong><div class="muted">${fmtDate(w.date)} · ${setCountForWorkout(w)} sets · ${fmt(sessionVolume(w))} lb total volume</div></div><button class="delete-workout" data-id="${w.id}">Delete</button></div>${workoutScoreHtml(w)}<div class="history-exercises">${nw.exercises.map(e=>{const bestSet=e.sets.reduce((best,s)=>e1rm(s.weight,s.reps)>e1rm(best.weight,best.reps)?s:best,e.sets[0]||{weight:0,reps:0}),vol=e.sets.reduce((sum,s)=>sum+s.weight*s.reps,0),reps=e.sets.reduce((sum,s)=>sum+s.reps,0);return `<div class="history-exercise history-exercise-card"><strong>${escapeHtml(e.name)}</strong><span class="muted set-sequence">${escapeHtml(setSummary(e))}</span><div class="exercise-metrics"><div><small>EST. 1-REP MAX</small><strong>${Math.round(bestE1ForExercise(e))} lb</strong><span>Based on ${fmt(bestSet.weight)} × ${bestSet.reps}</span></div><div><small>TOTAL VOLUME</small><strong>${fmt(vol)} lb</strong><span>${e.sets.length} sets · ${reps} reps</span></div></div></div>`}).join('')}</div>`;el.appendChild(d)});
   if(!workouts.length)el.innerHTML='<div class="empty-state"><strong>No workouts yet.</strong><span>Log or import your first completed workout to start tracking progress.</span></div>';
  }else{
   const rows=exerciseRows(name).sort((a,b)=>b.date.localeCompare(a.date));
