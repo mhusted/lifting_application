@@ -798,20 +798,21 @@ function scoreWorkout(w){
  const ratio=median?vol/median:1;
  let volume=20*Math.max(.45,Math.min(1,1-Math.abs(1-ratio)*.45));
  const sets=nw.exercises.flatMap(e=>e.sets).filter(s=>s.weight>0&&s.reps>0),rir=sets.filter(s=>s.rir!=null).map(s=>s.rir);
- let effort=10;
- if(rir.length){const avg=rir.reduce((s,x)=>s+x,0)/rir.length;const ideal=goal==='Strength'?2:goal==='Hypertrophy'?1.5:2;effort=Math.max(5,15-Math.abs(avg-ideal)*2.5);}
+ const effortScored=rir.length>0;
+ let effort=null;
+ if(effortScored){const avg=rir.reduce((s,x)=>s+x,0)/rir.length;const ideal=goal==='Strength'?2:goal==='Hypertrophy'?1.5:2;effort=Math.max(5,15-Math.abs(avg-ideal)*2.5);}
  const exConsistency=nw.exercises.map(e=>{const s=e.sets.filter(x=>x.weight>0&&x.reps>0);if(s.length<2)return 1;const perf=s.map(x=>e1rm(x.weight,x.reps)),hi=Math.max(...perf),lo=Math.min(...perf);return hi?Math.max(0,1-(hi-lo)/hi):1});
  const consistency=10*(exConsistency.length?exConsistency.reduce((s,x)=>s+x,0)/exConsistency.length:0);
  const weights=goal==='Strength'?{p:1.15,b:.8,v:.85,e:1.05,c:1}:{p:1,b:1,v:1,e:1,c:1};
  if(goal==='Hypertrophy'){weights.p=.9;weights.b=1.05;weights.v=1.15;weights.e=1.05;}
- const raw=progression*weights.p+balance*weights.b+volume*weights.v+effort*weights.e+consistency*weights.c;
- const max=30*weights.p+25*weights.b+20*weights.v+15*weights.e+10*weights.c;
+ const raw=progression*weights.p+balance*weights.b+volume*weights.v+(effortScored?effort*weights.e:0)+consistency*weights.c;
+ const max=30*weights.p+25*weights.b+20*weights.v+(effortScored?15*weights.e:0)+10*weights.c;
  const score=Math.round(raw/max*100);
- return {score,type,goal,parts:{progression:Math.round(progression/30*100),balance:Math.round(balance/25*100),volume:Math.round(volume/20*100),effort:Math.round(effort/15*100),consistency:Math.round(consistency/10*100)},previous};
+ return {score,type,goal,parts:{progression:Math.round(progression/30*100),balance:Math.round(balance/25*100),volume:Math.round(volume/20*100),effort:effortScored?Math.round(effort/15*100):null,consistency:Math.round(consistency/10*100)},previous};
 }
 function workoutScoreHtml(w){
  const s=scoreWorkout(w),label=s.score>=90?'Excellent':s.score>=80?'Very good':s.score>=70?'Good':s.score>=60?'Solid':'Needs balance';
- return '<div class="workout-score"><div class="score-main"><strong>'+s.score+'/100</strong><span>'+label+' · '+escapeHtml(s.type)+' · '+escapeHtml(s.goal)+'</span></div><div class="score-parts"><span>Progression '+s.parts.progression+'%</span><span>Balance '+s.parts.balance+'%</span><span>Volume '+s.parts.volume+'%</span><span>Effort '+s.parts.effort+'%</span><span>Consistency '+s.parts.consistency+'%</span></div></div>';
+ return '<div class="workout-score"><div class="score-main"><strong>'+s.score+'/100</strong><span>'+label+' · '+escapeHtml(s.type)+' · '+escapeHtml(s.goal)+'</span></div><div class="score-parts"><span>Progression '+s.parts.progression+'%</span><span>Balance '+s.parts.balance+'%</span><span>Volume '+s.parts.volume+'%</span><span>Effort '+(s.parts.effort==null?'Not scored — no RIR entered':s.parts.effort+'%')+'</span><span>Consistency '+s.parts.consistency+'%</span></div></div>';
 }
 
 function renderDashboard(){
