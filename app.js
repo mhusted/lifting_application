@@ -849,7 +849,7 @@ function exerciseRows(name){
  workouts.forEach(w=>{
   const matching=normalizedWorkout(w).exercises.filter(e=>e.name===name);if(!matching.length)return;
   const sets=matching.flatMap(e=>e.sets).filter(s=>s.weight>0&&s.reps>0);if(!sets.length)return;
-  rows.push({date:w.date,workoutId:w.id,workoutName:w.name,sets,weight:Math.max(...sets.map(s=>s.weight)),vol:exerciseVolume({name,sets}),e1:Math.max(...sets.map(s=>e1rm(s.weight,s.reps)))});
+  rows.push({date:w.date,workoutId:w.id,workoutName:w.name,sets,weight:Math.max(...sets.map(s=>s.weight)),vol:exerciseVolume({name:name,sets:sets}),e1:Math.max(...sets.map(s=>e1rm(s.weight,s.reps)))});
  });return rows.sort((a,b)=>a.date.localeCompare(b.date));
 }
 function allTrainingRows(){
