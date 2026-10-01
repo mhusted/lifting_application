@@ -207,8 +207,24 @@ function normalizeExercise(ex){
  return {name,status:ex.status||'Completed',note:ex.note||'',sets:Array.from({length:count},()=>({weight:+ex.weight||0,reps:+ex.reps||0,rir:ex.rir==null?null:+ex.rir}))};
 }
 function normalizedWorkout(w){return {...w,exercises:(w.exercises||[]).map(normalizeExercise)}}
-function exerciseVolume(ex){return normalizeExercise(ex).sets.reduce((sum,s)=>sum+s.weight*s.reps,0)}
+function exerciseLoadMultiplier(name){
+ const n=canonicalExerciseName(name).toLowerCase();
+ // Dumbbell library entries record the weight of one dumbbell. For bilateral
+ // movements, normalized external load therefore uses both implements.
+ if(n.includes('dumbbell')&&!/one-arm|single-arm|alternating/.test(n))return 2;
+ return 1;
+}
+function exerciseVolume(ex){const n=normalizeExercise(ex),m=exerciseLoadMultiplier(n.name);return n.sets.reduce((sum,s)=>sum+s.weight*s.reps*m,0)}
 function sessionVolume(w){return (w.exercises||[]).reduce((sum,e)=>sum+exerciseVolume(e),0)}
+function historicalExerciseVolumes(name,beforeWorkout){
+ const key=canonicalExerciseName(name).toLowerCase();
+ return workouts.filter(x=>x.id!==beforeWorkout.id&&(x.date<beforeWorkout.date||(x.date===beforeWorkout.date&&String(x.id)<String(beforeWorkout.id)))).flatMap(x=>normalizedWorkout(x).exercises.filter(e=>e.name.toLowerCase()===key).map(exerciseVolume)).filter(v=>v>0).sort((x,y)=>x-y);
+}
+function relativeVolumeIndex(ex,w){
+ const current=exerciseVolume(ex),history=historicalExerciseVolumes(ex.name,w);
+ if(!current)return null;if(!history.length)return 100;
+ const median=history[Math.floor(history.length/2)];return median?Math.max(50,Math.min(150,current/median*100)):100;
+}
 function setCountForWorkout(w){return (w.exercises||[]).reduce((sum,e)=>sum+normalizeExercise(e).sets.filter(s=>s.weight>0&&s.reps>0).length,0)}
 function bestE1ForExercise(ex){const sets=normalizeExercise(ex).sets.filter(s=>s.weight>0&&s.reps>0);return sets.length?Math.max(...sets.map(s=>e1rm(s.weight,s.reps))):0}
 
@@ -793,9 +809,11 @@ function scoreWorkout(w){
  let balance=25*coverage;
  if(type==='Upper'&&worked.has('chest')&&worked.has('back'))balance=Math.min(25,balance+2);
  if(type==='Lower'&&worked.has('quads')&&worked.has('hamstrings'))balance=Math.min(25,balance+2);
- const peer=[...workouts].filter(x=>x.id!==w.id&&inferWorkoutType(x)===type&&sessionVolume(x)>0).map(sessionVolume).sort((x,y)=>x-y);
- const median=peer.length?peer[Math.floor(peer.length/2)]:vol;
- const ratio=median?vol/median:1;
+ const volumeIndexes=nw.exercises.map(e=>relativeVolumeIndex(e,w)).filter(v=>v!=null);
+ const avgVolumeIndex=volumeIndexes.length?volumeIndexes.reduce((s,x)=>s+x,0)/volumeIndexes.length:100;
+ const ratio=avgVolumeIndex/100;
+ // Score volume relative to each exercise's own historical baseline rather than
+ // allowing naturally heavy movements (for example leg press) to dominate.
  let volume=20*Math.max(.45,Math.min(1,1-Math.abs(1-ratio)*.45));
  const sets=nw.exercises.flatMap(e=>e.sets).filter(s=>s.weight>0&&s.reps>0),rir=sets.filter(s=>s.rir!=null).map(s=>s.rir);
  const effortScored=rir.length>0;
@@ -831,7 +849,7 @@ function exerciseRows(name){
  workouts.forEach(w=>{
   const matching=normalizedWorkout(w).exercises.filter(e=>e.name===name);if(!matching.length)return;
   const sets=matching.flatMap(e=>e.sets).filter(s=>s.weight>0&&s.reps>0);if(!sets.length)return;
-  rows.push({date:w.date,workoutId:w.id,workoutName:w.name,sets,weight:Math.max(...sets.map(s=>s.weight)),vol:sets.reduce((a,s)=>a+s.weight*s.reps,0),e1:Math.max(...sets.map(s=>e1rm(s.weight,s.reps)))});
+  rows.push({date:w.date,workoutId:w.id,workoutName:w.name,sets,weight:Math.max(...sets.map(s=>s.weight)),vol:exerciseVolume({name:name,sets:sets}),e1:Math.max(...sets.map(s=>e1rm(s.weight,s.reps)))});
  });return rows.sort((a,b)=>a.date.localeCompare(b.date));
 }
 function allTrainingRows(){
@@ -897,7 +915,7 @@ function signedNumber(n){return `${n>=0?'+':'−'}${fmt(Math.abs(n))} lb`}
 function signedPct(n){return n==null?'—':`${n>=0?'+':'−'}${Math.abs(n).toFixed(1)}%`}
 function liftExerciseMap(w){
  const map=new Map();
- normalizedWorkout(w).exercises.forEach(ex=>{const sets=ex.sets.filter(x=>x.weight>0&&x.reps>0);if(!sets.length)return;const vol=sets.reduce((a,x)=>a+x.weight*x.reps,0),e1=Math.max(...sets.map(x=>e1rm(x.weight,x.reps))),weight=Math.max(...sets.map(x=>x.weight));if(map.has(ex.name)){const cur=map.get(ex.name);cur.vol+=vol;cur.e1=Math.max(cur.e1,e1);cur.weight=Math.max(cur.weight,weight)}else map.set(ex.name,{name:ex.name,vol,e1,weight});});
+ normalizedWorkout(w).exercises.forEach(ex=>{const sets=ex.sets.filter(x=>x.weight>0&&x.reps>0);if(!sets.length)return;const vol=exerciseVolume(ex),e1=Math.max(...sets.map(x=>e1rm(x.weight,x.reps))),weight=Math.max(...sets.map(x=>x.weight));if(map.has(ex.name)){const cur=map.get(ex.name);cur.vol+=vol;cur.e1=Math.max(cur.e1,e1);cur.weight=Math.max(cur.weight,weight)}else map.set(ex.name,{name:ex.name,vol,e1,weight});});
  return map;
 }
 function exerciseComparisonHtml(current,previous){
