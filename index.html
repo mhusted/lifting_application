@@ -9,14 +9,14 @@
   <meta name="apple-mobile-web-app-title" content="Lift Growth" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=26" />
+  <link rel="stylesheet" href="styles.css?v=27" />
   <title>Lift Growth</title>
 </head>
 <body>
   <header class="topbar">
     <div>
       <div class="eyebrow">WEEKLY STRENGTH TRACKER</div>
-      <h1>Lift Growth</h1><div class="app-version">v26</div>
+      <h1>Lift Growth</h1><div class="app-version">v27</div>
     </div>
     <button id="installBtn" class="ghost hidden">Install</button>
   </header>
@@ -63,7 +63,7 @@
             <label>Workout name<input type="text" id="workoutName" placeholder="Upper A" /></label>
           </div>
           <div class="two-col">
-            <label>Workout type<select id="workoutType"><option>Upper</option><option>Lower</option><option>Push</option><option>Pull</option><option>Full Body</option><option>Other</option></select></label>
+            <label>Workout type<select id="workoutType"><option value="Auto">Auto (detect exercises)</option><option value="Upper">Upper Body</option><option value="Lower">Lower Body</option><option>Push</option><option>Pull</option><option value="Full Body">Mixed / Full Body</option><option>Core</option><option value="Other">Unclassified</option></select><span id="autoWorkoutClassification" class="muted" aria-live="polite">Unclassified</span></label>
             <label>Goal<select id="workoutGoal"><option>Balanced</option><option>Strength</option><option>Hypertrophy</option></select></label>
           </div>
           <label>Workout note <span class="muted">(optional)</span><textarea id="workoutNote" rows="2" placeholder="Hotel gym, deload week, shortened session…"></textarea></label><div id="exerciseRows"></div>
@@ -90,7 +90,7 @@ Incline Press
             <label>Workout date<input type="date" id="importWorkoutDate" /></label>
             <label>Workout name<input type="text" id="importWorkoutName" placeholder="Upper Body" /></label>
           </div>
-          <div class="two-col"><label>Workout type<select id="importWorkoutType"><option>Upper</option><option>Lower</option><option>Push</option><option>Pull</option><option>Full Body</option><option>Other</option></select></label><label>Goal<select id="importWorkoutGoal"><option>Balanced</option><option>Strength</option><option>Hypertrophy</option></select></label></div>
+          <div class="two-col"><label>Workout type<select id="importWorkoutType"><option value="Auto">Auto (detect exercises)</option><option value="Upper">Upper Body</option><option value="Lower">Lower Body</option><option>Push</option><option>Pull</option><option value="Full Body">Mixed / Full Body</option><option>Core</option><option value="Other">Unclassified</option></select></label><label>Goal<select id="importWorkoutGoal"><option>Balanced</option><option>Strength</option><option>Hypertrophy</option></select></label></div>
           <div class="import-actions">
             <button type="button" id="importAsWorkout" class="primary">Import workout</button>
             <label class="secondary file-button">Import Excel<input id="workoutExcelFile" type="file" accept=".xlsx,.xls,.xlsb" /></label>
@@ -282,7 +282,7 @@ Seated Row — 3 × 10"></textarea>
 
 
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-  <script src="app.js?v=26"></script>
-  <script src="exercise-library.js?v=26"></script>
+  <script src="app.js?v=27"></script>
+  <script src="exercise-library.js?v=27"></script>
 </body>
 </html>
