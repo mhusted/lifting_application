@@ -115,11 +115,11 @@ async function storageSet(key,value){
 async function storageDelete(key){try{await idbDelete(key)}catch(err){console.warn('IndexedDB delete failed',err)}safeLocalRemove(key)}
 async function saveWorkouts(){return storageSet(WORKOUT_KEY,JSON.stringify(workouts))}
 async function saveRoutines(){return storageSet(ROUTINE_KEY,JSON.stringify(routines))}
-function serializeDraft(){return {date:$('date')?.value||today(),name:$('workoutName')?.value||'',routineId:$('routineQuickSelect')?.value||'',exercises:[...document.querySelectorAll('#exerciseRows .exercise-card')].map(card=>({name:card.querySelector('.exercise-name')?.value||'',sets:[...card.querySelectorAll('.set-entry')].map(row=>({weight:row.querySelector('.set-weight')?.value||'',reps:row.querySelector('.set-reps')?.value||'',rir:row.querySelector('.set-rir')?.value||''}))}))}}
+function serializeDraft(){return {date:$('date')?.value||today(),name:$('workoutName')?.value||'',routineId:$('routineQuickSelect')?.value||'',workoutTypeOverride:$('workoutType')?.value||'Auto',exercises:[...document.querySelectorAll('#exerciseRows .exercise-card')].map(card=>({name:card.querySelector('.exercise-name')?.value||'',sets:[...card.querySelectorAll('.set-entry')].map(row=>({weight:row.querySelector('.set-weight')?.value||'',reps:row.querySelector('.set-reps')?.value||'',rir:row.querySelector('.set-rir')?.value||''}))}))}}
 let draftTimer=null;
 function saveDraft(){clearTimeout(draftTimer);draftTimer=setTimeout(()=>{storageSet(DRAFT_KEY,JSON.stringify(serializeDraft()))},180)}
 async function deleteDraft(){await storageDelete(DRAFT_KEY)}
-async function restoreDraft(){const d=safeParse(await storageGet(DRAFT_KEY),null);if(!d||!Array.isArray(d.exercises)||!d.exercises.length)return false;$('date').value=d.date||today();$('workoutName').value=d.name||'';$('exerciseRows').innerHTML='';d.exercises.forEach(e=>addExercise(e.name||'',Math.max(1,e.sets?.length||1),'',e.sets||[]));if(d.routineId&&routines.some(r=>r.id===d.routineId))$('routineQuickSelect').value=d.routineId;return true}
+async function restoreDraft(){const d=safeParse(await storageGet(DRAFT_KEY),null);if(!d||!Array.isArray(d.exercises)||!d.exercises.length)return false;$('date').value=d.date||today();$('workoutName').value=d.name||'';$('workoutType').value=d.workoutTypeOverride||'Auto';$('exerciseRows').innerHTML='';d.exercises.forEach(e=>addExercise(e.name||'',Math.max(1,e.sets?.length||1),'',e.sets||[]));if(d.routineId&&routines.some(r=>r.id===d.routineId))$('routineQuickSelect').value=d.routineId;return true}
 async function loadPersistentData(){
  const storedWorkouts=safeParse(await storageGet(WORKOUT_KEY),[]);
  const storedRoutines=safeParse(await storageGet(ROUTINE_KEY),[]);
@@ -238,7 +238,7 @@ function addSet(exerciseNode, values={}){
  node.querySelector('.set-weight').value=values.weight??'';
  node.querySelector('.set-reps').value=values.reps??'';
  node.querySelector('.set-rir').value=values.rir??'';
- node.querySelector('.remove-set').addEventListener('click',()=>{node.remove();renumberSets(exerciseNode);});
+ node.querySelector('.remove-set').addEventListener('click',()=>{node.remove();renumberSets(exerciseNode);updateWorkoutClassification();});
  exerciseNode.querySelector('.set-rows').appendChild(node);
  renumberSets(exerciseNode);
  return node;
@@ -249,7 +249,7 @@ function addExercise(name='',setCount=3,targetReps='',prefillSets=null,target=nu
  nameInput.value=canonicalExerciseName(name);
  if(target?.status)node.querySelector('.exercise-status').value=target.status;
  if(target?.note)node.querySelector('.exercise-note').value=target.note;
- setupExerciseAutocomplete(nameInput,node.querySelector('.exercise-suggestions'),()=>renderPreviousPerformance(node));
+ setupExerciseAutocomplete(nameInput,node.querySelector('.exercise-suggestions'),()=>{renderPreviousPerformance(node);updateWorkoutClassification();});
  const rows=node.querySelector('.set-rows'); rows.innerHTML='';
  const sets=Array.isArray(prefillSets)&&prefillSets.length?prefillSets:Array.from({length:Math.max(1,+setCount||1)},()=>({reps:targetReps||''}));
  sets.forEach(s=>addSet(node,s));
@@ -262,13 +262,13 @@ function addExercise(name='',setCount=3,targetReps='',prefillSets=null,target=nu
   const first={weight:all[0].querySelector('.set-weight').value,reps:all[0].querySelector('.set-reps').value,rir:all[0].querySelector('.set-rir').value};
   all.slice(1).forEach(r=>{r.querySelector('.set-weight').value=first.weight;r.querySelector('.set-reps').value=first.reps;r.querySelector('.set-rir').value=first.rir;});
  });
- node.querySelector('.remove-exercise').addEventListener('click',()=>node.remove());
- (target||$('exerciseRows')).appendChild(node);
+ node.querySelector('.remove-exercise').addEventListener('click',()=>{node.remove();updateWorkoutClassification();});
+ $('exerciseRows').appendChild(node);updateWorkoutClassification();
  renderPreviousPerformance(node);
  return node;
 }
 function clearWorkout(){
- $('workoutName').value='';if($('workoutNote'))$('workoutNote').value='';$('routineQuickSelect').value='';$('exerciseRows').innerHTML='';addExercise();deleteDraft();
+ $('workoutName').value='';$('workoutType').value='Auto';if($('workoutNote'))$('workoutNote').value='';$('routineQuickSelect').value='';$('exerciseRows').innerHTML='';addExercise();deleteDraft();
 }
 $('addExercise').addEventListener('click',()=>addExercise('',3,''));
 $('clearWorkout').addEventListener('click',clearWorkout);
@@ -292,7 +292,7 @@ $('saveWorkout').addEventListener('click',async()=>{
   name:canonicalExerciseName(card.querySelector('.exercise-name').value),status:card.querySelector('.exercise-status')?.value||'Completed',note:card.querySelector('.exercise-note')?.value.trim()||'',sets:[...card.querySelectorAll('.set-entry')].map(row=>({weight:+row.querySelector('.set-weight').value||0,reps:+row.querySelector('.set-reps').value||0,rir:row.querySelector('.set-rir').value===''?null:+row.querySelector('.set-rir').value})).filter(s=>s.weight>0&&s.reps>0)
  })).filter(x=>x.name&&(x.sets.length||x.status!=='Completed'));
  if(!exercises.some(x=>x.sets.length)){alert('Add at least one exercise with a completed set (weight and reps).');return;}
- workouts.push({id:uid(),date:$('date').value||today(),name:$('workoutName').value.trim()||'Workout',workoutType:$('workoutType')?.value||'Upper',goal:$('workoutGoal')?.value||'Balanced',note:$('workoutNote')?.value.trim()||'',exercises});
+ workouts.push({id:uid(),date:$('date').value||today(),name:$('workoutName').value.trim()||'Workout',workoutTypeOverride:$('workoutType')?.value||'Auto',goal:$('workoutGoal')?.value||'Balanced',note:$('workoutNote')?.value.trim()||'',exercises});
  workouts.sort((a,b)=>a.date.localeCompare(b.date));const saved=await saveWorkouts();if(!saved){alert('Lift Growth could not save this workout on this device. Please export a backup and try again.');return;}await deleteDraft();clearWorkout();$('date').value=today();renderAll();alert('Workout saved on this device.');
 });
 
@@ -555,7 +555,7 @@ $('importAsWorkout').addEventListener('click',async()=>{
   })).filter(e=>e.name&&e.sets.length);
   if(!exercises.length){showImportMessage('No completed weighted sets were recognized. Your history was not changed.',true);return;}
 
-  workout={id:uid(),date,name,workoutType:$('importWorkoutType')?.value||'Upper',goal:$('importWorkoutGoal')?.value||'Balanced',exercises};
+  workout={id:uid(),date,name,workoutTypeOverride:$('importWorkoutType')?.value||'Auto',goal:$('importWorkoutGoal')?.value||'Balanced',exercises};
   const nextWorkouts=[...workouts,workout].sort((a,b)=>a.date.localeCompare(b.date));
 
   // Validate the complete workout before changing the in-memory history.
@@ -611,8 +611,8 @@ async function importWorkoutExcel(file){
   rows.forEach(r=>{
    const exercise=canonicalExerciseName(col(r,'Exercise','Exercise Name','Movement'));if(!exercise)return;
    const date=excelDate(col(r,'Date','Workout Date'))||today(),name=String(col(r,'Workout','Workout Name','Session')||r.__sheet||'Excel Workout').trim();
-   const key=date+'|'+name,type=normalizeWorkoutType(col(r,'Workout Type','Type')||'Other'),goal=WORKOUT_GOALS.find(x=>x.toLowerCase()===String(col(r,'Goal')).toLowerCase())||'Balanced';
-   if(!groups.has(key))groups.set(key,{id:uid(),date,name,workoutType:type,goal,exercises:[]});
+   const key=date+'|'+name,type=normalizeWorkoutType(col(r,'Workout Type','Type')||'Auto'),goal=WORKOUT_GOALS.find(x=>x.toLowerCase()===String(col(r,'Goal')).toLowerCase())||'Balanced';
+   if(!groups.has(key))groups.set(key,{id:uid(),date,name,workoutTypeOverride:type,goal,exercises:[]});
    const g=groups.get(key),weight=+col(r,'Weight','Weight lb','Load')||0,reps=+col(r,'Reps','Repetitions')||0,rir=col(r,'RIR','Reps In Reserve');
    let ex=g.exercises.find(x=>x.name.toLowerCase()===exercise.toLowerCase());if(!ex){ex={name:exercise,sets:[]};g.exercises.push(ex);}
    if(weight>0&&reps>0)ex.sets.push({weight,reps,rir:rir===''?null:+rir});
@@ -760,38 +760,56 @@ $('routineForm').addEventListener('submit',e=>{
 });
 
 
-const WORKOUT_TYPES=['Upper','Lower','Push','Pull','Full Body','Other'];
+const WORKOUT_TYPES=['Auto','Upper','Lower','Push','Pull','Full Body','Core','Other'];
 const WORKOUT_GOALS=['Balanced','Strength','Hypertrophy'];
 function normalizeWorkoutType(v=''){
  const s=String(v).trim().toLowerCase();
  const exact=WORKOUT_TYPES.find(x=>x.toLowerCase()===s);if(exact)return exact;
- if(/upper/.test(s))return 'Upper';if(/lower|leg/.test(s))return 'Lower';if(/push/.test(s))return 'Push';if(/pull/.test(s))return 'Pull';if(/full/.test(s))return 'Full Body';return 'Other';
+ if(/upper/.test(s))return 'Upper';if(/lower|leg/.test(s))return 'Lower';if(/push/.test(s))return 'Push';if(/pull/.test(s))return 'Pull';if(/full|mixed/.test(s))return 'Full Body';return 'Other';
+}
+function classifyWorkout(w){
+ let upper=0,lower=0,core=0,unknown=0,push=0,pull=0;
+ for(const e of normalizedWorkout(w).exercises){
+  if(e.status!=='Completed')continue;
+  const count=e.sets.filter(s=>s.weight>0&&s.reps>0).length;if(!count)continue;
+  const g=exerciseMuscleGroups(e.name);
+  const u=g.some(x=>['chest','back','shoulders','biceps','triceps'].includes(x)),l=g.some(x=>['quads','hamstrings','glutes','calves'].includes(x));
+  if(u&&l){upper+=count/2;lower+=count/2;}else if(u){upper+=count;if(g.some(x=>['chest','triceps'].includes(x)))push+=count;if(g.some(x=>['back','biceps'].includes(x)))pull+=count;}else if(l)lower+=count;else if(g.includes('core'))core+=count;else unknown+=count;
+ }
+ const total=upper+lower, known=total+core;
+ const type=unknown>known||!known?'Other':!total?(unknown?'Other':'Core'):upper/total>=.8?'Upper':lower/total>=.8?'Lower':'Full Body';
+ return {type,upper,lower,core,unknown,secondary:type==='Upper'?(push>0&&!pull?'Push':pull>0&&!push?'Pull':''):''};
 }
 function inferWorkoutType(w){
- if(w?.workoutType)return normalizeWorkoutType(w.workoutType);
- const n=String(w?.name||'').toLowerCase();
- const named=normalizeWorkoutType(n);if(named!=='Other')return named;
- const groups=new Set(normalizedWorkout(w).exercises.flatMap(e=>exerciseMuscleGroups(e.name)));
- const upper=['chest','back','shoulders','biceps','triceps'].filter(x=>groups.has(x)).length;
- const lower=['quads','hamstrings','glutes','calves'].filter(x=>groups.has(x)).length;
- if(upper&&lower)return 'Full Body';if(lower>=2&&!upper)return 'Lower';return upper?'Upper':'Other';
+ const override=w?.workoutTypeOverride;
+ return override&&override!=='Auto'?normalizeWorkoutType(override):classifyWorkout(w).type;
+}
+function workoutTypeLabel(type){return ({Upper:'Upper Body',Lower:'Lower Body','Full Body':'Mixed / Full Body',Other:'Unclassified'})[type]||type;}
+function classificationLabel(w){
+ const c=classifyWorkout(w),total=c.upper+c.lower;
+ return workoutTypeLabel(inferWorkoutType(w))+(total?' — '+Math.round(c.upper/total*100)+'% Upper / '+Math.round(c.lower/total*100)+'% Lower':'')+(c.secondary?' · '+c.secondary:'')+(c.unknown?' · '+c.unknown+' unclassified sets':'');
+}
+function updateWorkoutClassification(){
+ const el=$('autoWorkoutClassification');if(!el)return;
+ const exercises=[...document.querySelectorAll('#exerciseRows .exercise-card')].map(card=>({name:card.querySelector('.exercise-name').value,status:card.querySelector('.exercise-status')?.value||'Completed',sets:[...card.querySelectorAll('.set-entry')].map(row=>({weight:+row.querySelector('.set-weight').value,reps:+row.querySelector('.set-reps').value}))}));
+ el.textContent=classificationLabel({exercises,workoutTypeOverride:$('workoutType').value});
 }
 function exerciseMuscleGroups(name){
  const n=String(name||'').toLowerCase(),g=[];
- if(/bench|chest|pec|fly|push-up/.test(n))g.push('chest');
+ if(/bench|chest|pec|fly|push-up/.test(n)&&!/rear delt|reverse pec/.test(n))g.push('chest');
  if(/pulldown|pull-up|row|straight-arm|back extension/.test(n))g.push('back');
- if(/shoulder|lateral|front raise|rear delt|reverse pec|face pull|arnold/.test(n))g.push('shoulders');
+ if(/shoulder|lateral raise|front raise|rear delt|reverse pec|face pull|arnold/.test(n))g.push('shoulders');
  if(/bicep|curl/.test(n)&&!/leg curl/.test(n))g.push('biceps');
  if(/tricep|skull|dip/.test(n))g.push('triceps');
  if(/squat|leg press|leg extension|lunge|split squat/.test(n))g.push('quads');
  if(/leg curl|romanian|deadlift|good morning/.test(n))g.push('hamstrings');
- if(/hip thrust|glute|romanian|deadlift|split squat|lunge/.test(n))g.push('glutes');
+ if(/hip thrust|hip abduction|hip adduction|glute|romanian|deadlift|split squat|lunge/.test(n))g.push('glutes');
  if(/calf/.test(n))g.push('calves');
  if(/crunch|plank|knee raise|rotation|wood chop|russian/.test(n))g.push('core');
  return [...new Set(g)];
 }
 function targetGroups(type){
- return type==='Upper'?['chest','back','shoulders','biceps','triceps']:type==='Lower'?['quads','hamstrings','glutes','calves']:type==='Push'?['chest','shoulders','triceps']:type==='Pull'?['back','shoulders','biceps']:type==='Full Body'?['chest','back','quads','hamstrings','glutes']:['chest','back','shoulders','quads','hamstrings','glutes'];
+ return type==='Core'?['core']:type==='Upper'?['chest','back','shoulders','biceps','triceps']:type==='Lower'?['quads','hamstrings','glutes','calves']:type==='Push'?['chest','shoulders','triceps']:type==='Pull'?['back','shoulders','biceps']:type==='Full Body'?['chest','back','quads','hamstrings','glutes']:['chest','back','shoulders','quads','hamstrings','glutes'];
 }
 function scoreWorkout(w){
  const type=inferWorkoutType(w),goal=WORKOUT_GOALS.includes(w?.goal)?w.goal:'Balanced',nw=normalizedWorkout(w),vol=sessionVolume(w);
@@ -805,7 +823,7 @@ function scoreWorkout(w){
    const avg=changes.reduce((s,x)=>s+x,0)/changes.length;progression=Math.max(8,Math.min(30,20+avg*50));
   }
  }
- const targets=targetGroups(type),worked=new Set(nw.exercises.flatMap(e=>exerciseMuscleGroups(e.name))),coverage=targets.filter(x=>worked.has(x)).length/targets.length;
+ const targets=targetGroups(type),worked=new Set(nw.exercises.filter(e=>e.status==='Completed'&&e.sets.some(s=>s.weight>0&&s.reps>0)).flatMap(e=>exerciseMuscleGroups(e.name))),coverage=targets.filter(x=>worked.has(x)).length/targets.length;
  let balance=25*coverage;
  if(type==='Upper'&&worked.has('chest')&&worked.has('back'))balance=Math.min(25,balance+2);
  if(type==='Lower'&&worked.has('quads')&&worked.has('hamstrings'))balance=Math.min(25,balance+2);
@@ -830,7 +848,7 @@ function scoreWorkout(w){
 }
 function workoutScoreHtml(w){
  const s=scoreWorkout(w),label=s.score>=90?'Excellent':s.score>=80?'Very good':s.score>=70?'Good':s.score>=60?'Solid':'Needs balance';
- return '<div class="workout-score"><div class="score-main"><strong>'+s.score+'/100</strong><span>'+label+' · '+escapeHtml(s.type)+' · '+escapeHtml(s.goal)+'</span></div><div class="score-parts"><span>Progression '+s.parts.progression+'%</span><span>Balance '+s.parts.balance+'%</span><span>Volume '+s.parts.volume+'%</span><span>Effort '+(s.parts.effort==null?'Not scored — no RIR entered':s.parts.effort+'%')+'</span><span>Consistency '+s.parts.consistency+'%</span></div></div>';
+ return '<div class="workout-score"><div class="score-main"><strong>'+s.score+'/100</strong><span>'+label+' · '+escapeHtml(classificationLabel(w))+' · '+escapeHtml(s.goal)+'</span></div><div class="score-parts"><span>Progression '+s.parts.progression+'%</span><span>Balance '+s.parts.balance+'%</span><span>Volume '+s.parts.volume+'%</span><span>Effort '+(s.parts.effort==null?'Not scored — no RIR entered':s.parts.effort+'%')+'</span><span>Consistency '+s.parts.consistency+'%</span></div></div>';
 }
 
 function renderDashboard(){
@@ -967,8 +985,8 @@ async function importBackupFile(file){
 }
 $('exportBackup')?.addEventListener('click',exportBackup);
 $('importBackup')?.addEventListener('change',e=>{importBackupFile(e.target.files?.[0]);e.target.value='';});
-$('log')?.addEventListener('input',saveDraft);
-$('log')?.addEventListener('change',saveDraft);
+$('log')?.addEventListener('input',()=>{saveDraft();updateWorkoutClassification();});
+$('log')?.addEventListener('change',()=>{saveDraft();updateWorkoutClassification();});
 function renderAll(){renderDashboard();renderRoutines();renderHistory();renderExerciseSelect();updateLocalDataSummary()}
 
 
