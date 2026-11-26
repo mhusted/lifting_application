@@ -115,11 +115,11 @@ async function storageSet(key,value){
 async function storageDelete(key){try{await idbDelete(key)}catch(err){console.warn('IndexedDB delete failed',err)}safeLocalRemove(key)}
 async function saveWorkouts(){return storageSet(WORKOUT_KEY,JSON.stringify(workouts))}
 async function saveRoutines(){return storageSet(ROUTINE_KEY,JSON.stringify(routines))}
-function serializeDraft(){return {date:$('date')?.value||today(),name:$('workoutName')?.value||'',routineId:$('routineQuickSelect')?.value||'',workoutTypeOverride:$('workoutType')?.value||'Auto',exercises:[...document.querySelectorAll('#exerciseRows .exercise-card')].map(card=>({name:card.querySelector('.exercise-name')?.value||'',sets:[...card.querySelectorAll('.set-entry')].map(row=>({weight:row.querySelector('.set-weight')?.value||'',reps:row.querySelector('.set-reps')?.value||'',rir:row.querySelector('.set-rir')?.value||''}))}))}}
+function serializeDraft(){return {date:$('date')?.value||today(),name:$('workoutName')?.value||'',routineId:$('routineQuickSelect')?.value||'',workoutTypeOverride:$('workoutType')?.value||'Auto',exercises:[...document.querySelectorAll('#exerciseRows .exercise-card')].map(card=>({name:card.querySelector('.exercise-name')?.value||'',status:card.querySelector('.exercise-status')?.value||'Completed',note:card.querySelector('.exercise-note')?.value||'',sets:[...card.querySelectorAll('.set-entry')].map(row=>({weight:row.querySelector('.set-weight')?.value||'',reps:row.querySelector('.set-reps')?.value||'',rir:row.querySelector('.set-rir')?.value||''}))}))}}
 let draftTimer=null;
 function saveDraft(){clearTimeout(draftTimer);draftTimer=setTimeout(()=>{storageSet(DRAFT_KEY,JSON.stringify(serializeDraft()))},180)}
 async function deleteDraft(){await storageDelete(DRAFT_KEY)}
-async function restoreDraft(){const d=safeParse(await storageGet(DRAFT_KEY),null);if(!d||!Array.isArray(d.exercises)||!d.exercises.length)return false;$('date').value=d.date||today();$('workoutName').value=d.name||'';$('workoutType').value=d.workoutTypeOverride||'Auto';$('exerciseRows').innerHTML='';d.exercises.forEach(e=>addExercise(e.name||'',Math.max(1,e.sets?.length||1),'',e.sets||[]));if(d.routineId&&routines.some(r=>r.id===d.routineId))$('routineQuickSelect').value=d.routineId;return true}
+async function restoreDraft(){const d=safeParse(await storageGet(DRAFT_KEY),null);if(!d||!Array.isArray(d.exercises)||!d.exercises.length)return false;$('date').value=d.date||today();$('workoutName').value=d.name||'';$('workoutType').value=d.workoutTypeOverride||'Auto';$('exerciseRows').innerHTML='';d.exercises.forEach(e=>addExercise(e.name||'',Math.max(1,e.sets?.length||1),'',e.sets||[],e));if(d.routineId&&routines.some(r=>r.id===d.routineId))$('routineQuickSelect').value=d.routineId;return true}
 async function loadPersistentData(){
  const storedWorkouts=safeParse(await storageGet(WORKOUT_KEY),[]);
  const storedRoutines=safeParse(await storageGet(ROUTINE_KEY),[]);
@@ -260,7 +260,7 @@ function addExercise(name='',setCount=3,targetReps='',prefillSets=null,target=nu
  node.querySelector('.fill-down').addEventListener('click',()=>{
   const all=[...node.querySelectorAll('.set-entry')]; if(all.length<2)return;
   const first={weight:all[0].querySelector('.set-weight').value,reps:all[0].querySelector('.set-reps').value,rir:all[0].querySelector('.set-rir').value};
-  all.slice(1).forEach(r=>{r.querySelector('.set-weight').value=first.weight;r.querySelector('.set-reps').value=first.reps;r.querySelector('.set-rir').value=first.rir;});
+  all.slice(1).forEach(r=>{r.querySelector('.set-weight').value=first.weight;r.querySelector('.set-reps').value=first.reps;r.querySelector('.set-rir').value=first.rir;});updateWorkoutClassification();
  });
  node.querySelector('.remove-exercise').addEventListener('click',()=>{node.remove();updateWorkoutClassification();});
  $('exerciseRows').appendChild(node);updateWorkoutClassification();
@@ -275,7 +275,7 @@ $('clearWorkout').addEventListener('click',clearWorkout);
 
 function loadRoutineIntoLog(routine){
  $('exerciseRows').innerHTML='';
- $('workoutName').value=routine.name;
+ $('workoutName').value=routine.name;$('workoutType').value='Auto';
  routine.exercises.forEach(e=>addExercise(e.name,e.sets,e.reps,null,e));
  $('routineQuickSelect').value=routine.id;
  switchTab('log');
@@ -799,10 +799,10 @@ function exerciseMuscleGroups(name){
  if(/bench|chest|pec|fly|push-up/.test(n)&&!/rear delt|reverse pec/.test(n))g.push('chest');
  if(/pulldown|pull-up|row|straight-arm|back extension/.test(n))g.push('back');
  if(/shoulder|lateral raise|front raise|rear delt|reverse pec|face pull|arnold/.test(n))g.push('shoulders');
- if(/bicep|curl/.test(n)&&!/leg curl/.test(n))g.push('biceps');
+ if(/bicep|curl/.test(n)&&!/leg curl|hamstring curl/.test(n))g.push('biceps');
  if(/tricep|skull|dip/.test(n))g.push('triceps');
  if(/squat|leg press|leg extension|lunge|split squat/.test(n))g.push('quads');
- if(/leg curl|romanian|deadlift|good morning/.test(n))g.push('hamstrings');
+ if(/leg curl|hamstring curl|romanian|deadlift|good morning/.test(n))g.push('hamstrings');
  if(/hip thrust|hip abduction|hip adduction|glute|romanian|deadlift|split squat|lunge/.test(n))g.push('glutes');
  if(/calf/.test(n))g.push('calves');
  if(/crunch|plank|knee raise|rotation|wood chop|russian/.test(n))g.push('core');
