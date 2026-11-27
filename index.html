@@ -9,14 +9,14 @@
   <meta name="apple-mobile-web-app-title" content="Lift Growth" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=27" />
+  <link rel="stylesheet" href="styles.css?v=28" />
   <title>Lift Growth</title>
 </head>
 <body>
   <header class="topbar">
     <div>
       <div class="eyebrow">WEEKLY STRENGTH TRACKER</div>
-      <h1>Lift Growth</h1><div class="app-version">v27</div>
+      <h1>Lift Growth</h1><div class="app-version">v28</div>
     </div>
     <button id="installBtn" class="ghost hidden">Install</button>
   </header>
@@ -171,12 +171,12 @@ Seated Row — 3 × 10"></textarea>
           <div id="volumeChange" class="trend-callout muted">Log at least two periods to see volume change.</div>
           <div id="progressViewSummary" class="progress-view-summary muted">Weekly view · last 3 months</div>
           <div class="chart-section"><div class="chart-heading"><strong>Overall training volume</strong><span class="muted">All exercises combined</span></div><div class="chart-wrap"><canvas id="volumeChart" width="720" height="380"></canvas></div></div>
-          <div class="summary-section"><div class="chart-heading"><strong>Exercise comparison table</strong><span class="muted">Blanks mean no comparable performance in that period.</span></div><div id="comparisonMatrix"></div></div><div class="summary-section"><div class="chart-heading"><strong>Personal records</strong><span class="muted">Best estimated 1RM by exercise</span></div><div id="prSummary" class="stack"></div></div>
+          <div class="summary-section"><div class="chart-heading"><strong>Exercise comparison table</strong><span class="muted">Blanks mean no comparable performance in that period.</span></div><p class="comparison-swipe-hint">Swipe left or right to compare periods.</p><div id="comparisonMatrix"></div></div><div class="summary-section"><div class="chart-heading"><strong>Personal records</strong><span class="muted">Best estimated 1RM by exercise</span></div><div id="prSummary" class="stack"></div></div>
         </div>
         <div id="liftProgressSummary" class="hidden">
           <div class="chart-heading"><strong>Like-for-like lift comparison</strong><span class="muted">Lift position is based on completed-workout order within each Monday–Sunday training week.</span></div>
           <div id="liftComparisonSummary" class="progress-view-summary muted"></div>
-          <div id="liftComparisonList" class="stack"></div><div class="summary-section"><div class="chart-heading"><strong>Like-for-like exercise table</strong><span class="muted">Exercises are compared only within the same Lift position.</span></div><div id="liftComparisonMatrix"></div></div>
+          <div id="liftComparisonList" class="stack"></div><div class="summary-section"><div class="chart-heading"><strong>Like-for-like exercise table</strong><span class="muted">Exercises are compared only within the same Lift position.</span></div><p class="comparison-swipe-hint">Swipe left or right to compare periods.</p><div id="liftComparisonMatrix"></div></div>
         </div>
         <div id="exerciseProgressDetail" class="hidden">
           <div class="stats-grid"><div><strong id="bestWeight">—</strong><small>Best weight</small></div><div><strong id="bestE1RM">—</strong><small>Best est. 1RM</small></div><div><strong id="bestVolume">—</strong><small>Best session volume</small></div></div>
@@ -282,7 +282,7 @@ Seated Row — 3 × 10"></textarea>
 
 
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-  <script src="app.js?v=27"></script>
-  <script src="exercise-library.js?v=27"></script>
+  <script src="app.js?v=28"></script>
+  <script src="exercise-library.js?v=28"></script>
 </body>
 </html>
