@@ -98,3 +98,15 @@ textarea{width:100%;margin-top:6px;background:#0d1626;border:1px solid var(--bor
 .score-parts{display:flex;flex-wrap:wrap;gap:8px;margin-top:9px}.score-parts span{font-size:.78rem;padding:4px 7px;border-radius:999px;background:#172033;color:#cbd5e1}
 
 .exercise-context{display:grid;grid-template-columns:minmax(150px,.7fr) minmax(220px,1.3fr);gap:10px;margin:10px 0}.skip-status{display:inline-block;padding:3px 7px;border-radius:999px;background:rgba(148,163,184,.15);font-size:.75rem;white-space:nowrap}.comparison-scroll{overflow-x:auto;margin-top:10px}.comparison-table{border-collapse:collapse;width:max-content;min-width:100%;font-size:.84rem}.comparison-table th,.comparison-table td{padding:9px 10px;border-bottom:1px solid rgba(148,163,184,.18);text-align:right;white-space:nowrap}.comparison-table th:first-child{text-align:left;position:sticky;left:0;background:#111827;z-index:1}.lift-matrix-block{margin:18px 0}@media(max-width:640px){.exercise-context{grid-template-columns:1fr}.comparison-table{font-size:.78rem}}
+
+/* v28: keep comparison values visible on narrow portrait screens. */
+#comparisonMatrix,#liftComparisonMatrix,.lift-matrix-block{min-width:0;max-width:100%}
+.comparison-scroll{width:100%;max-width:100%;min-width:0;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.comparison-swipe-hint{display:none}
+@media(max-width:640px) and (orientation:portrait){
+ .comparison-swipe-hint{display:block;margin:6px 0;color:var(--muted);font-size:.75rem}
+ .comparison-table{border-collapse:separate;border-spacing:0}
+ .comparison-table th:first-child{width:clamp(100px,34vw,200px);min-width:clamp(100px,34vw,200px);max-width:clamp(100px,34vw,200px);white-space:normal;overflow-wrap:anywhere;line-height:1.3;background:var(--card);box-shadow:2px 0 0 var(--border);padding:9px 8px}
+ .comparison-table th:not(:first-child),.comparison-table td{min-width:96px;padding:9px 8px}
+ .comparison-table .skip-status{white-space:normal;max-width:110px;overflow-wrap:anywhere}
+}
