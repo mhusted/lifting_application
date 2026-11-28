@@ -1,0 +1,32 @@
+name: Vendor SheetJS
+on:
+  push:
+    branches: [development/ios]
+    paths: ['.github/workflows/vendor-sheetjs.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Download pinned upstream distribution and license
+        run: |
+          mkdir -p vendor
+          curl --fail --location --retry 3 https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js -o vendor/xlsx-0.20.3.full.min.js
+          curl --fail --location --retry 3 https://cdn.sheetjs.com/xlsx-0.20.3/package/LICENSE -o vendor/SHEETJS-LICENSE.txt
+          node -e "const x=require('./vendor/xlsx-0.20.3.full.min.js'); if(x.version!=='0.20.3') throw Error('Unexpected SheetJS version'); const w=x.utils.book_new(); x.utils.book_append_sheet(w,x.utils.aoa_to_sheet([['Exercise'],['Row']]),'Workout'); const b=x.write(w,{type:'buffer',bookType:'xlsx'}); if(x.utils.sheet_to_json(x.read(b,{type:'buffer'}).Sheets.Workout)[0].Exercise!=='Row') throw Error('Excel round trip failed');"
+          sha256sum vendor/xlsx-0.20.3.full.min.js > vendor/SHEETJS.sha256
+      - name: Commit verified local dependency
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add vendor
+          if ! git diff --cached --quiet; then
+            git commit -m "Vendor SheetJS 0.20.3 distribution and license"
+            git push origin HEAD:development/ios
+          fi
