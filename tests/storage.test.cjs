@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const vm=require('node:vm');
 const source=fs.readFileSync('app.js','utf8');
 function extract(start,end){return source.slice(source.indexOf(start),source.indexOf(end,source.indexOf(start)));}
-function context(overrides={}){const c=vm.createContext({console:{error(){},warn(){}},...overrides});vm.runInContext(extract('async function storageGet(','async function saveWorkouts()')+extract('function validateBackup(','async function importBackupFile('),c);return c;}
+function context(overrides={}){const c=vm.createContext({DB_STORE:'kv',console:{error(){},warn(){}},...overrides});vm.runInContext(extract('async function storageGet(','async function saveWorkouts()')+extract('function validateBackup(','async function importBackupFile('),c);return c;}
 const workout={id:'w1',date:'2026-11-28',name:'Upper',exercises:[{name:'Chest Press',sets:[{weight:100,reps:10,rir:2}]}]};
 test('full app parses',()=>assert.doesNotThrow(()=>new vm.Script(source)));
 test('primary read failure does not silently load stale mirror',async()=>{const c=context({idbGet:async()=>{throw Error('offline')},safeLocalGet:()=> 'stale'});await assert.rejects(c.storageGet('x'));});
