@@ -3,6 +3,8 @@ const ROUTINE_KEY='liftGrowthRoutinesV2';
 const DRAFT_KEY='liftGrowthWorkoutDraftV1';
 const DB_NAME='liftGrowthDB';
 const DB_STORE='kv';
+const CUSTOM_EXERCISE_KEY='liftGrowthCustomExercisesV1';
+let customExercises=[];
 let workouts=[];
 let routines=[];
 let dbPromise=null;
@@ -122,7 +124,11 @@ async function storageDelete(key){
  try{await idbSet(key,'null');safeLocalRemove(key);return true;}
  catch(err){console.error('Storage delete failed',err);return false;}
 }
-async function saveWorkouts(){return storageSet(WORKOUT_KEY,JSON.stringify(workouts))}
+async function saveWorkouts(){
+ const next=mergeCustomExercises(customExercises,workouts);
+ if(!await storageBatch([[WORKOUT_KEY,JSON.stringify(workouts)],[CUSTOM_EXERCISE_KEY,JSON.stringify(next)]]))return false;
+ customExercises=next;return true;
+}
 async function saveRoutines(){return storageSet(ROUTINE_KEY,JSON.stringify(routines))}
 function serializeDraft(){return {date:$('date')?.value||today(),name:$('workoutName')?.value||'',routineId:$('routineQuickSelect')?.value||'',workoutTypeOverride:$('workoutType')?.value||'Auto',exercises:[...document.querySelectorAll('#exerciseRows .exercise-card')].map(card=>({name:card.querySelector('.exercise-name')?.value||'',status:card.querySelector('.exercise-status')?.value||'Completed',note:card.querySelector('.exercise-note')?.value||'',sets:[...card.querySelectorAll('.set-entry')].map(row=>({weight:row.querySelector('.set-weight')?.value||'',reps:row.querySelector('.set-reps')?.value||'',rir:row.querySelector('.set-rir')?.value||''}))}))}}
 let draftTimer=null;
@@ -135,7 +141,9 @@ async function loadPersistentData(){
  workouts=Array.isArray(storedWorkouts)?storedWorkouts:[];
  routines=Array.isArray(storedRoutines)?storedRoutines:[];
  // Migrate any existing localStorage data into IndexedDB on first v11 launch.
- if(workouts.length)await storageSet(WORKOUT_KEY,JSON.stringify(workouts));
+ const storedCustom=safeParse(await storageGet(CUSTOM_EXERCISE_KEY),[]);
+ customExercises=mergeCustomExercises(Array.isArray(storedCustom)?storedCustom:[],workouts);
+ if(!await saveWorkouts())throw new Error('Could not migrate exercise library');
  if(routines.length)await storageSet(ROUTINE_KEY,JSON.stringify(routines));
 }
 async function verifyStorage(){
@@ -158,13 +166,22 @@ function canonicalExerciseName(value){
  // catalog includes saved workouts and normalizing those workouts calls this
  // function again. That created an infinite recursion after the first import.
  const exact=EXERCISE_LIBRARY.find(n=>n.toLowerCase()===clean.toLowerCase());
- return exact||clean;
+ return exact||customExercises.find(n=>n.toLowerCase()===clean.toLowerCase())||clean;
+}
+function mergeCustomExercises(existing,history){
+ const built=new Set(EXERCISE_LIBRARY.map(n=>n.toLowerCase()));
+ const result=new Map();
+ for(const raw of [...existing,...history.flatMap(w=>(w.exercises||[]).map(e=>e?.name))]){
+  if(typeof raw!=='string')continue;
+  const clean=raw.trim();if(!clean)continue;
+  const name=EXERCISE_ALIASES[clean.toLowerCase()]||clean;
+  const key=name.toLowerCase();
+  if(!built.has(key)&&!result.has(key))result.set(key,name);
+ }
+ return [...result.values()].sort((a,b)=>a.localeCompare(b));
 }
 function exerciseCatalog(){
- // Read saved exercise names directly; do not normalize them while building
- // the catalog. This keeps catalog construction non-recursive.
- const prior=workouts.flatMap(w=>(w.exercises||[]).map(e=>canonicalExerciseName(e?.name||''))).filter(Boolean);
- return [...new Set([...EXERCISE_LIBRARY,...prior])].sort((a,b)=>a.localeCompare(b));
+ return [...EXERCISE_LIBRARY,...customExercises].sort((a,b)=>a.localeCompare(b));
 }
 function latestExercisePerformance(name){
  const key=String(name||'').trim().toLowerCase(); if(!key)return null;
@@ -595,10 +612,7 @@ $('importAsWorkout').addEventListener('click',async()=>{
   showImportMessage(`Imported ${name} on ${date} into workout history.`);
  }catch(err){
   console.error('Historical workout import failed',err);
-  if(workout && committed){
-   workouts=workouts.filter(w=>w.id!==workout.id);
-   try{await saveWorkouts()}catch(rollbackErr){console.error('Import rollback failed',rollbackErr)}
-  }
+  if(committed){showImportMessage('Workout saved, but the display could not refresh. Reload the app.',true);return;}
   showImportMessage(`Import failed${err?.message?`: ${err.message}`:''}. Your workout history was left unchanged.`,true);
  }
 });
@@ -986,7 +1000,7 @@ document.querySelectorAll('.viz').forEach(b=>b.addEventListener('click',()=>{cur
 function switchTab(id){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.dataset.tab===id));document.querySelectorAll('.panel').forEach(x=>x.classList.toggle('active',x.id===id))}
 document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
 function exportBackup(){
- const payload={app:'Lift Growth',version:10,exportedAt:new Date().toISOString(),workouts,routines};
+ const payload={app:'Lift Growth',version:11,exportedAt:new Date().toISOString(),workouts,routines,customExercises};
  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`lift-growth-backup-${today()}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
@@ -997,6 +1011,7 @@ function validateBackup(parsed){
  const integer=x=>number(x)&&Number(x)>0&&Number.isInteger(Number(x));
  const date=x=>typeof x==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x)&&!Number.isNaN(Date.parse(x))&&new Date(x).toISOString().slice(0,10)===x;
  const ids=new Set();
+ if(parsed?.customExercises!==undefined&&(!Array.isArray(parsed.customExercises)||!parsed.customExercises.every(name)))throw new Error('Invalid custom exercise library');
  if(!object(parsed)||!Array.isArray(parsed.workouts)||!Array.isArray(parsed.routines))throw new Error('Invalid backup structure');
  for(const w of parsed.workouts){
   if(!object(w)||!name(w.id)||ids.has(w.id)||!date(w.date)||!name(w.name)||!Array.isArray(w.exercises))throw new Error('Invalid or duplicate workout');
@@ -1019,8 +1034,9 @@ async function importBackupFile(file){
  try{
   const parsed=validateBackup(JSON.parse(await file.text()));
   if(!confirm('Restore '+parsed.workouts.length+' workout(s) and '+parsed.routines.length+' routine(s)? This will replace the data currently stored on this device.'))return;
-  if(!await storageBatch([[WORKOUT_KEY,JSON.stringify(parsed.workouts)],[ROUTINE_KEY,JSON.stringify(parsed.routines)]])){alert('Backup could not be saved. Existing history was not replaced.');return;}
-  workouts=parsed.workouts;routines=parsed.routines;renderAll();alert('Backup restored successfully.');
+  const nextCustom=mergeCustomExercises(parsed.customExercises||[],parsed.workouts);
+  if(!await storageBatch([[WORKOUT_KEY,JSON.stringify(parsed.workouts)],[ROUTINE_KEY,JSON.stringify(parsed.routines)],[CUSTOM_EXERCISE_KEY,JSON.stringify(nextCustom)]])){alert('Backup could not be saved. Existing history was not replaced.');return;}
+  workouts=parsed.workouts;routines=parsed.routines;customExercises=nextCustom;renderAll();alert('Backup restored successfully.');
  }catch(err){console.error(err);alert('Backup restore failed: '+err.message);}
 }
 $('exportBackup')?.addEventListener('click',exportBackup);
