@@ -1,5 +1,5 @@
-const CACHE='lift-growth-v28';
-const ASSETS=['./','./index.html','./styles.css?v=28','./app.js?v=28','./exercise-library.js?v=28','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
+const CACHE='lift-growth-v29';
+const ASSETS=['./','./index.html','./vendor/xlsx-0.20.3.full.min.js','./styles.css?v=29','./app.js?v=29','./exercise-library.js?v=29','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
 self.addEventListener('install',event=>{
  event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting()));
 });
@@ -16,7 +16,7 @@ self.addEventListener('fetch',event=>{
    if(fresh&&fresh.ok){const cache=await caches.open(CACHE);cache.put(event.request,fresh.clone());}
    return fresh;
   }catch(err){
-   return (await caches.match(event.request))||(await caches.match('./index.html'));
+   return (await caches.match(event.request))||(event.request.mode==='navigate'?await caches.match('./index.html'):Response.error());
   }
  })());
 });
