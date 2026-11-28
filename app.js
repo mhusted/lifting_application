@@ -100,25 +100,34 @@ function openDb(){
 async function idbGet(key){const db=await openDb();return new Promise((resolve,reject)=>{const tx=db.transaction(DB_STORE,'readonly');const req=tx.objectStore(DB_STORE).get(key);req.onsuccess=()=>resolve(req.result??null);req.onerror=()=>reject(req.error);});}
 async function idbSet(key,value){const db=await openDb();return new Promise((resolve,reject)=>{const tx=db.transaction(DB_STORE,'readwrite');tx.objectStore(DB_STORE).put(value,key);tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('IndexedDB write aborted'));});}
 async function idbDelete(key){const db=await openDb();return new Promise((resolve,reject)=>{const tx=db.transaction(DB_STORE,'readwrite');tx.objectStore(DB_STORE).delete(key);tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error);});}
+// IndexedDB is authoritative; localStorage is a legacy migration source.
 async function storageGet(key){
- try{const v=await idbGet(key);if(v!=null)return v;}catch(err){console.warn('IndexedDB read failed; using localStorage fallback',err)}
- return safeLocalGet(key);
+ const value=await idbGet(key);
+ return value==null?safeLocalGet(key):value;
 }
-async function storageSet(key,value){
- let idbOk=false;
- try{await idbSet(key,value);idbOk=true;}catch(err){console.error('IndexedDB write failed',err)}
- const localOk=safeLocalSet(key,value);
- if(idbOk){setStorageStatus('Saved on this device');return true;}
- if(localOk){setStorageStatus('Saved using fallback storage');return true;}
- setStorageStatus('Storage unavailable',true);return false;
+async function storageBatch(entries){
+ try{
+  const db=await openDb();
+  await new Promise((resolve,reject)=>{
+   const tx=db.transaction(DB_STORE,'readwrite'),store=tx.objectStore(DB_STORE);
+   tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('Storage transaction aborted'));
+   try{for(const [key,value] of entries)store.put(value,key);}catch(err){tx.abort();reject(err);}
+  });
+  for(const [key,value] of entries)safeLocalSet(key,value);
+  setStorageStatus('Saved on this device');return true;
+ }catch(err){console.error('Storage write failed',err);setStorageStatus('Storage unavailable',true);return false;}
 }
-async function storageDelete(key){try{await idbDelete(key)}catch(err){console.warn('IndexedDB delete failed',err)}safeLocalRemove(key)}
+async function storageSet(key,value){return storageBatch([[key,value]])}
+async function storageDelete(key){
+ try{await idbSet(key,'null');safeLocalRemove(key);return true;}
+ catch(err){console.error('Storage delete failed',err);return false;}
+}
 async function saveWorkouts(){return storageSet(WORKOUT_KEY,JSON.stringify(workouts))}
 async function saveRoutines(){return storageSet(ROUTINE_KEY,JSON.stringify(routines))}
 function serializeDraft(){return {date:$('date')?.value||today(),name:$('workoutName')?.value||'',routineId:$('routineQuickSelect')?.value||'',workoutTypeOverride:$('workoutType')?.value||'Auto',exercises:[...document.querySelectorAll('#exerciseRows .exercise-card')].map(card=>({name:card.querySelector('.exercise-name')?.value||'',status:card.querySelector('.exercise-status')?.value||'Completed',note:card.querySelector('.exercise-note')?.value||'',sets:[...card.querySelectorAll('.set-entry')].map(row=>({weight:row.querySelector('.set-weight')?.value||'',reps:row.querySelector('.set-reps')?.value||'',rir:row.querySelector('.set-rir')?.value||''}))}))}}
 let draftTimer=null;
 function saveDraft(){clearTimeout(draftTimer);draftTimer=setTimeout(()=>{storageSet(DRAFT_KEY,JSON.stringify(serializeDraft()))},180)}
-async function deleteDraft(){await storageDelete(DRAFT_KEY)}
+async function deleteDraft(){clearTimeout(draftTimer);return storageDelete(DRAFT_KEY)}
 async function restoreDraft(){const d=safeParse(await storageGet(DRAFT_KEY),null);if(!d||!Array.isArray(d.exercises)||!d.exercises.length)return false;$('date').value=d.date||today();$('workoutName').value=d.name||'';$('workoutType').value=d.workoutTypeOverride||'Auto';$('exerciseRows').innerHTML='';d.exercises.forEach(e=>addExercise(e.name||'',Math.max(1,e.sets?.length||1),'',e.sets||[],e));if(d.routineId&&routines.some(r=>r.id===d.routineId))$('routineQuickSelect').value=d.routineId;return true}
 async function loadPersistentData(){
  const storedWorkouts=safeParse(await storageGet(WORKOUT_KEY),[]);
@@ -288,12 +297,16 @@ $('routineQuickSelect').addEventListener('change',e=>{
 });
 
 $('saveWorkout').addEventListener('click',async()=>{
+ const button=$('saveWorkout');if(button.disabled)return;button.disabled=true;
+ try{
  const exercises=[...document.querySelectorAll('#exerciseRows .exercise-card')].map(card=>({
   name:canonicalExerciseName(card.querySelector('.exercise-name').value),status:card.querySelector('.exercise-status')?.value||'Completed',note:card.querySelector('.exercise-note')?.value.trim()||'',sets:[...card.querySelectorAll('.set-entry')].map(row=>({weight:+row.querySelector('.set-weight').value||0,reps:+row.querySelector('.set-reps').value||0,rir:row.querySelector('.set-rir').value===''?null:+row.querySelector('.set-rir').value})).filter(s=>s.weight>0&&s.reps>0)
  })).filter(x=>x.name&&(x.sets.length||x.status!=='Completed'));
  if(!exercises.some(x=>x.sets.length)){alert('Add at least one exercise with a completed set (weight and reps).');return;}
- workouts.push({id:uid(),date:$('date').value||today(),name:$('workoutName').value.trim()||'Workout',workoutTypeOverride:$('workoutType')?.value||'Auto',goal:$('workoutGoal')?.value||'Balanced',note:$('workoutNote')?.value.trim()||'',exercises});
- workouts.sort((a,b)=>a.date.localeCompare(b.date));const saved=await saveWorkouts();if(!saved){alert('Lift Growth could not save this workout on this device. Please export a backup and try again.');return;}await deleteDraft();clearWorkout();$('date').value=today();renderAll();alert('Workout saved on this device.');
+ const previousWorkouts=workouts;
+ workouts=[...workouts,{id:uid(),date:$('date').value||today(),name:$('workoutName').value.trim()||'Workout',workoutTypeOverride:$('workoutType')?.value||'Auto',goal:$('workoutGoal')?.value||'Balanced',note:$('workoutNote')?.value.trim()||'',exercises}];
+ workouts.sort((a,b)=>a.date.localeCompare(b.date));const saved=await saveWorkouts();if(!saved){workouts=previousWorkouts;alert('Lift Growth could not save this workout on this device. Please export a backup and try again.');return;}await deleteDraft();clearWorkout();$('date').value=today();renderAll();alert('Workout saved on this device.');
+ }finally{button.disabled=false;}
 });
 
 
@@ -977,11 +990,38 @@ function exportBackup(){
  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`lift-growth-backup-${today()}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
+function validateBackup(parsed){
+ const object=x=>x!==null&&typeof x==='object'&&!Array.isArray(x);
+ const name=x=>typeof x==='string'&&x.trim().length>0;
+ const number=x=>(typeof x==='number'||(typeof x==='string'&&x.trim()!==''))&&Number.isFinite(Number(x));
+ const integer=x=>number(x)&&Number(x)>0&&Number.isInteger(Number(x));
+ const date=x=>typeof x==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x)&&!Number.isNaN(Date.parse(x))&&new Date(x).toISOString().slice(0,10)===x;
+ const ids=new Set();
+ if(!object(parsed)||!Array.isArray(parsed.workouts)||!Array.isArray(parsed.routines))throw new Error('Invalid backup structure');
+ for(const w of parsed.workouts){
+  if(!object(w)||!name(w.id)||ids.has(w.id)||!date(w.date)||!name(w.name)||!Array.isArray(w.exercises))throw new Error('Invalid or duplicate workout');
+  ids.add(w.id);
+  for(const ex of w.exercises){
+   if(!object(ex)||!name(ex.name))throw new Error('Invalid exercise');
+   const sets=Array.isArray(ex.sets)?ex.sets:integer(ex.sets)&&Number(ex.sets)<=1000?[ex]:null;
+   if(!sets||sets.some(set=>!object(set)||!number(set.weight)||Number(set.weight)<0||!integer(set.reps)||(set.rir!=null&&set.rir!==''&&(!number(set.rir)||Number(set.rir)<0||Number(set.rir)>10))))throw new Error('Invalid working set');
+  }
+ }
+ ids.clear();
+ for(const r of parsed.routines){
+  if(!object(r)||!name(r.id)||ids.has(r.id)||!name(r.name)||!Array.isArray(r.exercises)||r.exercises.some(ex=>!object(ex)||!name(ex.name)||!integer(ex.sets)||Number(ex.sets)>1000||!integer(ex.reps)))throw new Error('Invalid or duplicate routine');
+  ids.add(r.id);
+ }
+ return parsed;
+}
 async function importBackupFile(file){
- if(!file)return;try{const parsed=JSON.parse(await file.text());if(!Array.isArray(parsed.workouts)||!Array.isArray(parsed.routines))throw new Error('Invalid backup');
-  if(!confirm(`Restore ${parsed.workouts.length} workout(s) and ${parsed.routines.length} routine(s)? This will replace the data currently stored on this device.`))return;
-  workouts=parsed.workouts;routines=parsed.routines;saveWorkouts();saveRoutines();renderAll();alert('Backup restored successfully.');
- }catch(err){console.error(err);alert('That file does not look like a valid Lift Growth backup.');}
+ if(!file)return;
+ try{
+  const parsed=validateBackup(JSON.parse(await file.text()));
+  if(!confirm('Restore '+parsed.workouts.length+' workout(s) and '+parsed.routines.length+' routine(s)? This will replace the data currently stored on this device.'))return;
+  if(!await storageBatch([[WORKOUT_KEY,JSON.stringify(parsed.workouts)],[ROUTINE_KEY,JSON.stringify(parsed.routines)]])){alert('Backup could not be saved. Existing history was not replaced.');return;}
+  workouts=parsed.workouts;routines=parsed.routines;renderAll();alert('Backup restored successfully.');
+ }catch(err){console.error(err);alert('Backup restore failed: '+err.message);}
 }
 $('exportBackup')?.addEventListener('click',exportBackup);
 $('importBackup')?.addEventListener('change',e=>{importBackupFile(e.target.files?.[0]);e.target.value='';});
