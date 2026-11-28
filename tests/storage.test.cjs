@@ -14,3 +14,22 @@ test('batch mirrors only after transaction completes',async()=>{let writes=[];le
 test('valid backup and legacy sets accepted',()=>{const c=context();assert.doesNotThrow(()=>c.validateBackup({workouts:[workout],routines:[]}));assert.doesNotThrow(()=>c.validateBackup({workouts:[{...workout,exercises:[{name:'Row',sets:3,weight:50,reps:8}]}],routines:[]}));});
 test('duplicate ids and invalid dates rejected',()=>{const c=context();assert.throws(()=>c.validateBackup({workouts:[workout,workout],routines:[]}));assert.throws(()=>c.validateBackup({workouts:[{...workout,date:'2026-02-30'}],routines:[]}));});
 test('malformed sets rejected',()=>{const c=context();assert.throws(()=>c.validateBackup({workouts:[{...workout,exercises:[{name:'Row',sets:[{weight:-1,reps:8}]}]}],routines:[]}));});
+
+function libraryContext(overrides={}){
+ const c=vm.createContext({EXERCISE_LIBRARY:['Chest Press'],EXERCISE_ALIASES:{'machine press':'Chest Press'},customExercises:[],workouts:[],WORKOUT_KEY:'workouts',CUSTOM_EXERCISE_KEY:'custom',...overrides});
+ vm.runInContext(extract('function canonicalExerciseName(','function latestExercisePerformance(')+extract('async function saveWorkouts()','async function saveRoutines()'),c);
+ return c;
+}
+test('custom names deduplicate and built-in aliases are excluded',()=>{
+ const c=libraryContext();assert.deepEqual(Array.from(c.mergeCustomExercises([' Cable Twist '],[{exercises:[{name:'cable twist'},{name:'machine press'},{name:'New Row'}]}])),['Cable Twist','New Row']);
+});
+test('successful workout save registers custom exercise permanently',async()=>{
+ let entries;const c=libraryContext({workouts:[{exercises:[{name:'New Row'}]}],storageBatch:async x=>{entries=x;return true;}});
+ assert.equal(await c.saveWorkouts(),true);assert.equal(entries.length,2);assert.equal(c.canonicalExerciseName('new row'),'New Row');c.workouts=[];assert.equal(await c.saveWorkouts(),true);assert.ok(c.exerciseCatalog().includes('New Row'));
+});
+test('failed workout save does not register custom exercise',async()=>{
+ const c=libraryContext({workouts:[{exercises:[{name:'New Row'}]}],storageBatch:async()=>false});assert.equal(await c.saveWorkouts(),false);assert.equal(c.exerciseCatalog().includes('New Row'),false);
+});
+test('backup custom exercise field is optional and validated',()=>{
+ const c=context();assert.doesNotThrow(()=>c.validateBackup({workouts:[],routines:[],customExercises:['New Row']}));assert.throws(()=>c.validateBackup({workouts:[],routines:[],customExercises:[42]}));
+});
